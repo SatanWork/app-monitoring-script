@@ -1,1 +1,4 @@
-404: Not Found
+gspread
+oauth2client
+google-play-scraper
+schedule
