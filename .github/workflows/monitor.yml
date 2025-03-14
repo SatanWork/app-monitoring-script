@@ -1,0 +1,37 @@
+
+name: App Monitoring
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # Запуск каждые 15 минут
+  workflow_dispatch:  # Кнопка "Run workflow"
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout репозиторий
+        uses: actions/checkout@v3
+
+      - name: Установить Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.10'
+
+      - name: Установить зависимости
+        run: pip install -r requirements.txt
+
+      - name: Проверить переменную GOOGLE_CREDENTIALS
+        run: |
+          if [ -z "${{ secrets.GOOGLE_CREDENTIALS }}" ]; then
+            echo "❌ GOOGLE_CREDENTIALS не найден!"
+            exit 1
+          else
+            echo "✅ GOOGLE_CREDENTIALS передан корректно"
+          fi
+        shell: bash
+
+      - name: Запустить мониторинг
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        run: python monitoring.py
