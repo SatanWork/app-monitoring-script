@@ -127,11 +127,11 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
             log_change("Загружено новое приложение", app_number, package_name)
         elif existing_status == "ban" and status == "ready":
     # Проверяем, есть ли в "Changes Log" запись "Бан приложения" для этого приложения
-        if check_ban_log_exists(package_name):
-            remove_old_ban_log(package_name)  # 🗑️ Удаляем старую запись "Бан приложения"
-            log_change("Приложение вернулось в стор", app_number, package_name)
-        else:
-            log_change("Приложение появилось в сторе", app_number, package_name)
+            if check_ban_log_exists(package_name):
+                remove_old_ban_log(package_name)  # 🗑️ Удаляем старую запись "Бан приложения"
+                log_change("Приложение вернулось в стор", app_number, package_name)
+            else:
+                log_change("Приложение появилось в сторе", app_number, package_name)
 
         return [package_name, status, final_date, not_found_date]
 
