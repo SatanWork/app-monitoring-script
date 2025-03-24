@@ -92,8 +92,17 @@ log_buffer = []
 
 def log_change(change_type, app_number, package_name):
     print(f"📌 Лог: {change_type} – {package_name}")
+
+    # Проверка, есть ли уже такая запись в Changes Log
+    all_logs = log_sheet.get_all_values()[1:]
+    for row in all_logs:
+        if len(row) >= 4 and row[1] == change_type and row[2] == app_number and row[3] == package_name:
+            print(f"⚠️ Повтор записи в логе – пропускаем: {package_name}")
+            return
+
     if change_type == "Приложение вернулось в стор":
         remove_old_ban_log(package_name)
+
     log_buffer.append([datetime.today().strftime("%Y-%m-%d"), change_type, app_number, package_name])
 
 def flush_log():
