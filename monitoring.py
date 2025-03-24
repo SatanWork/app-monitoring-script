@@ -30,8 +30,8 @@ apps_google_play = all_values[1:]
 try:
     log_sheet = client.open_by_key(spreadsheet_id).worksheet("Changes Log")
 except gspread.exceptions.WorksheetNotFound:
-    log_sheet = client.open_by_key(spreadsheet_id).add_worksheet(title="Changes Log", rows="1000", cols="4")
-    log_sheet.append_row(["Дата изменения", "Тип изменения", "Номер приложения", "Package"])
+    log_sheet = client.open_by_key(spreadsheet_id).add_worksheet(title="Changes Log", rows="1000", cols="5")
+    log_sheet.append_row(["Дата изменения", "Тип изменения", "Номер приложения", "Package", "Название приложения"])
 
 # 🧹 Удаление дублей по типу, номеру и package
 def remove_duplicates_from_log():
@@ -42,25 +42,28 @@ def remove_duplicates_from_log():
 
         headers = all_logs[0]
         entries = all_logs[1:]
-        seen = {}
+        seen = set()
+        cleaned = [headers]
 
         for row in entries:
             if len(row) >= 4:
                 key = (row[1], row[2], row[3])
-                seen[key] = row
+                if key not in seen:
+                    seen.add(key)
+                    cleaned.append(row)
 
-        cleaned_logs = [headers] + list(seen.values())
-        log_sheet.clear()
-        log_sheet.append_rows(cleaned_logs)
-        print(f"🧹 Удалено {len(entries) - len(seen)} дублей.")
+        if len(cleaned) != len(all_logs):
+            log_sheet.clear()
+            log_sheet.append_rows(cleaned)
+            print(f"🧹 Удалено {len(all_logs) - len(cleaned)} дублей.")
     except Exception as e:
         print(f"❌ Ошибка при удалении дублей: {e}")
 
 # 🔎 Есть ли запись "Бан приложения"
-def check_ban_log_exists(package_name):
+def check_ban_log_exists(package_name, app_number):
     try:
         for row in log_sheet.get_all_values():
-            if len(row) >= 4 and row[1] == "Бан приложения" and row[3] == package_name:
+            if len(row) >= 4 and row[1] == "Бан приложения" and row[2] == app_number and row[3] == package_name:
                 return True
         return False
     except Exception as e:
@@ -68,14 +71,14 @@ def check_ban_log_exists(package_name):
         return False
 
 # 🗑️ Удаление "Бан приложения"
-def remove_old_ban_log(package_name):
+def remove_old_ban_log(package_name, app_number):
     try:
         all_logs = log_sheet.get_all_values()
         updated_logs = []
         removed = False
 
         for row in all_logs:
-            if len(row) >= 4 and row[1] == "Бан приложения" and row[3] == package_name:
+            if len(row) >= 4 and row[1] == "Бан приложения" and row[2] == app_number and row[3] == package_name:
                 removed = True
             else:
                 updated_logs.append(row)
@@ -92,17 +95,8 @@ log_buffer = []
 
 def log_change(change_type, app_number, package_name):
     print(f"📌 Лог: {change_type} – {package_name}")
-
-    # Проверка, есть ли уже такая запись в Changes Log
-    all_logs = log_sheet.get_all_values()[1:]
-    for row in all_logs:
-        if len(row) >= 4 and row[1] == change_type and row[2] == app_number and row[3] == package_name:
-            print(f"⚠️ Повтор записи в логе – пропускаем: {package_name}")
-            return
-
     if change_type == "Приложение вернулось в стор":
-        remove_old_ban_log(package_name)
-
+        remove_old_ban_log(package_name, app_number)
     log_buffer.append([datetime.today().strftime("%Y-%m-%d"), change_type, app_number, package_name])
 
 def flush_log():
@@ -139,7 +133,7 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
         if existing_status in ["", None]:
             log_change("Загружено новое приложение", app_number, package_name)
         elif existing_status == "ban" and status == "ready":
-            if check_ban_log_exists(package_name):
+            if check_ban_log_exists(package_name, app_number):
                 log_change("Приложение вернулось в стор", app_number, package_name)
             else:
                 log_change("Приложение появилось в сторе", app_number, package_name)
@@ -154,7 +148,10 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
         if existing_status in ["", None]:
             log_change("Загружено новое приложение", app_number, package_name)
         elif existing_status not in ["ban", None, ""]:
-            log_change("Бан приложения", app_number, package_name)
+            if not check_ban_log_exists(package_name, app_number):
+                log_change("Бан приложения", app_number, package_name)
+            else:
+                print(f"⚠️ Повтор записи в логе – пропускаем: {package_name}")
 
         return [package_name, status, existing_release_date, not_found_date]
 
