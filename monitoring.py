@@ -1,3 +1,5 @@
+# 💡 Полный обновлённый скрипт на GitHub/Render ты можешь получить по кнопке "Copy"
+
 import gspread
 import json
 import os
@@ -10,10 +12,9 @@ import time
 # 🔄 Подключение к Google Sheets
 print("🔄 Подключаемся к Google Sheets...")
 
-# Загружаем учетные данные из переменной окружения
 creds_json = os.getenv("GOOGLE_CREDENTIALS")
 if not creds_json:
-    raise ValueError("❌ Ошибка: GOOGLE_CREDENTIALS не найдены!")
+    raise ValueError("❌ GOOGLE_CREDENTIALS не найдены!")
 
 creds_dict = json.loads(creds_json)
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, [
@@ -23,66 +24,78 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, [
 client = gspread.authorize(creds)
 
 spreadsheet_id = "1DpbYJ5f6zdhIl1zDtn6Z3aCHZRDFTaqhsCrkzNM9Iqo"
-sheet = client.open_by_key(spreadsheet_id).sheet1  # Основная таблица
-
-# Загружаем все данные из таблицы
+sheet = client.open_by_key(spreadsheet_id).sheet1
 all_values = sheet.get_all_values()
-apps_google_play = all_values[1:]  # Убираем заголовок
+apps_google_play = all_values[1:]
 
-# Проверяем, существует ли лист "Changes Log", если нет – создаём
+# 🧾 Подключение к Changes Log
 try:
     log_sheet = client.open_by_key(spreadsheet_id).worksheet("Changes Log")
 except gspread.exceptions.WorksheetNotFound:
-    print("❌ Лист 'Changes Log' не найден, создаём его...")
     log_sheet = client.open_by_key(spreadsheet_id).add_worksheet(title="Changes Log", rows="1000", cols="4")
-    log_sheet.append_row(["Дата изменения", "Тип изменения", "Номер приложения", "Package"])  # Заголовки
+    log_sheet.append_row(["Дата изменения", "Тип изменения", "Номер приложения", "Package"])
 
-# 🛠️ Функция проверки, есть ли в "Changes Log" запись "Бан приложения"
-def check_ban_log_exists(package_name):
+# 🧹 Удаление дублей по типу, номеру и package
+def remove_duplicates_from_log():
     try:
         all_logs = log_sheet.get_all_values()
-        for row in all_logs:
-            if len(row) >= 4 and row[1] == "Бан приложения" and row[3] == package_name:
-                return True  # Если нашли запись, возвращаем True
-        return False  # Если нет записи, возвращаем False
+        if not all_logs:
+            return
+
+        headers = all_logs[0]
+        entries = all_logs[1:]
+        seen = {}
+
+        for row in entries:
+            if len(row) >= 4:
+                key = (row[1], row[2], row[3])
+                seen[key] = row
+
+        cleaned_logs = [headers] + list(seen.values())
+        log_sheet.clear()
+        log_sheet.append_rows(cleaned_logs)
+        print(f"🧹 Удалено {len(entries) - len(seen)} дублей.")
     except Exception as e:
-        print(f"❌ Ошибка при проверке лога: {e}")
+        print(f"❌ Ошибка при удалении дублей: {e}")
+
+# 🔎 Есть ли запись "Бан приложения"
+def check_ban_log_exists(package_name):
+    try:
+        for row in log_sheet.get_all_values():
+            if len(row) >= 4 and row[1] == "Бан приложения" and row[3] == package_name:
+                return True
+        return False
+    except Exception as e:
+        print(f"❌ Ошибка проверки лога: {e}")
         return False
 
-# Функция проверки и удаления старого лога "Бан приложения", если приложение вернулось в стор
+# 🗑️ Удаление "Бан приложения"
 def remove_old_ban_log(package_name):
     try:
-        spreadsheet = client.open_by_key(spreadsheet_id)
-        log_sheet = spreadsheet.worksheet("Changes Log")
-
         all_logs = log_sheet.get_all_values()
         updated_logs = []
         removed = False
 
         for row in all_logs:
             if len(row) >= 4 and row[1] == "Бан приложения" and row[3] == package_name:
-                removed = True  # Найдена старая запись "Бан приложения", удаляем
+                removed = True
             else:
-                updated_logs.append(row)  # Оставляем остальные записи
+                updated_logs.append(row)
 
         if removed:
-            log_sheet.clear()  # Полностью очищаем лог-лист
-            log_sheet.append_rows(updated_logs)  # Перезаписываем без удалённых строк
+            log_sheet.clear()
+            log_sheet.append_rows(updated_logs)
             print(f"🗑️ Удалена старая запись 'Бан приложения' для {package_name}")
-
     except Exception as e:
-        print(f"❌ Ошибка при очистке старого лога: {e}")
+        print(f"❌ Ошибка удаления записи: {e}")
 
-# Функция записи изменений в лог с учётом возврата приложения в стор
+# 📝 Логирование изменений
 log_buffer = []
 
 def log_change(change_type, app_number, package_name):
-    print(f"📌 Логируем: {change_type} - {package_name}")
-
-    # Если приложение вернулось в стор, удаляем старую запись "Бан приложения"
+    print(f"📌 Лог: {change_type} – {package_name}")
     if change_type == "Приложение вернулось в стор":
         remove_old_ban_log(package_name)
-
     log_buffer.append([datetime.today().strftime("%Y-%m-%d"), change_type, app_number, package_name])
 
 def flush_log():
@@ -90,45 +103,36 @@ def flush_log():
     if log_buffer:
         try:
             log_sheet.append_rows(log_buffer)
-            print(f"✅ В лог записано {len(log_buffer)} изменений.")
-            log_buffer = []  # Очистка буфера
+            print(f"✅ В лог записано: {len(log_buffer)} строк.")
+            log_buffer = []
         except Exception as e:
-            print(f"❌ Ошибка записи в 'Changes Log': {e}")
+            print(f"❌ Ошибка записи в лог: {e}")
 
-# Функция проверки приложений
+# 📲 Проверка одного приложения
 def fetch_google_play_data(package_name, app_number, existing_status, existing_release_date, existing_not_found_date):
     try:
         print(f"🔍 Проверяем {package_name}...")
-
         time.sleep(0.5)
         data = app(package_name)
-
         status = "ready"
-
-        release_date = data.get("released")
-        last_updated = data.get("updated")
 
         def convert_timestamp(value):
             if isinstance(value, int) and value > 1000000000:
                 return datetime.utcfromtimestamp(value).strftime("%Y-%m-%d")
             return value
 
-        release_date = convert_timestamp(release_date)
-        last_updated = convert_timestamp(last_updated)
-
-        final_date = release_date if release_date else last_updated or "Не найдено"
+        release_date = convert_timestamp(data.get("released"))
+        last_updated = convert_timestamp(data.get("updated"))
+        final_date = release_date or last_updated or "Не найдено"
         not_found_date = ""
 
-        print(f"📅 Дата {package_name}: {final_date}")
-        print(f"🔄 {existing_status} → {status}")
+        print(f"📅 Дата: {final_date}")
+        print(f"🔄 Статус: {existing_status} → {status}")
 
-        # 🔥 **Исправленная логика логирования**
-        if existing_status in ["", None]:  
+        if existing_status in ["", None]:
             log_change("Загружено новое приложение", app_number, package_name)
         elif existing_status == "ban" and status == "ready":
-    # Проверяем, есть ли в "Changes Log" запись "Бан приложения" для этого приложения
             if check_ban_log_exists(package_name):
-                remove_old_ban_log(package_name)  # 🗑️ Удаляем старую запись "Бан приложения"
                 log_change("Приложение вернулось в стор", app_number, package_name)
             else:
                 log_change("Приложение появилось в сторе", app_number, package_name)
@@ -136,88 +140,80 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
         return [package_name, status, final_date, not_found_date]
 
     except Exception as e:
-        print(f"❌ Ошибка при проверке {package_name}: {e}")
+        print(f"❌ Ошибка: {e}")
         status = "ban"
         not_found_date = existing_not_found_date or datetime.today().strftime("%Y-%m-%d")
 
-        # 🔥 **Теперь если статус был пустым – это новое приложение, даже если оно забанено**
-        if existing_status in ["", None]:  
+        if existing_status in ["", None]:
             log_change("Загружено новое приложение", app_number, package_name)
         elif existing_status not in ["ban", None, ""]:
             log_change("Бан приложения", app_number, package_name)
 
         return [package_name, status, existing_release_date, not_found_date]
 
-# **Функция проверки всех приложений**
+# 🚀 Проверка всех приложений
 def fetch_all_data():
-    print("🚀 Запуск проверки всех приложений...")
-    apps_list = []
+    print("🚀 Старт проверки всех приложений...")
+    apps_list = [
+        (row[0], row[7], row[3], row[5], row[6])
+        for row in apps_google_play if len(row) >= 8 and row[7]
+    ]
 
-    for row in apps_google_play:
-        if len(row) >= 8 and row[7]:  # Убедимся, что есть пакет
-            apps_list.append((row[0], row[7], row[3], row[5], row[6]))
-
-    print(f"✅ Найдено {len(apps_list)} приложений для проверки.")
     with ThreadPoolExecutor(max_workers=5) as executor:
-        return list(executor.map(lambda x: fetch_google_play_data(x[1], x[0], x[2], x[3], x[4]), apps_list))
+        return list(executor.map(lambda x: fetch_google_play_data(*x), apps_list))
 
-# **Обновление данных в Google Sheets**
+# 🧾 Обновление таблицы
 def update_google_sheets(sheet, data):
-    print("🔄 Перезагружаем данные из Google Sheets...")
-    all_values = sheet.get_all_values()  # Загружаем актуальные данные
-    apps_google_play = all_values[1:]  # Пропускаем заголовки
-
-    print("🔄 Обновляем данные в Google Sheets...")
+    print("📋 Обновляем таблицу...")
+    all_values = sheet.get_all_values()
+    apps_google_play = all_values[1:]
 
     updates = []
-    ready_count = 0  
     color_updates = []
+    ready_count = 0
 
-    for i, row in enumerate(apps_google_play, start=2):  # Стартуем с 2-й строки
-        package_name = row[7]  # Package приложения
+    for i, row in enumerate(apps_google_play, start=2):
+        package_name = row[7]
         for app_data in data:
             if app_data[0] == package_name:
-                updates.append({"range": f"D{i}", "values": [[app_data[1]]]})
-                updates.append({"range": f"F{i}", "values": [[app_data[2]]]})
-                updates.append({"range": f"G{i}", "values": [[app_data[3]]]})
-
+                updates += [
+                    {"range": f"D{i}", "values": [[app_data[1]]]},
+                    {"range": f"F{i}", "values": [[app_data[2]]]},
+                    {"range": f"G{i}", "values": [[app_data[3]]]}
+                ]
                 if app_data[1] == "ready":
                     ready_count += 1
 
-                # Цвет ячейки (зелёный - `ready`, красный - `ban`)
                 color = {"red": 0.8, "green": 1, "blue": 0.8} if app_data[1] == "ready" else {"red": 1, "green": 0.8, "blue": 0.8}
                 color_updates.append({"range": f"A{i}", "format": {"backgroundColor": color}})
-
-                break  # Переходим к следующему приложению
+                break
 
     if updates:
         try:
             sheet.batch_update(updates)
-            print(f"✅ Данные обновлены. Доступных приложений: {ready_count}")
+            print(f"✅ Обновлено {len(updates)//3} строк.")
         except Exception as e:
             print(f"❌ Ошибка обновления данных: {e}")
 
-    # 🔄 Обновляем цветовое оформление в одном запросе
     if color_updates:
         try:
             sheet.batch_format(color_updates)
         except Exception as e:
-            print(f"❌ Ошибка изменения цвета ячеек: {e}")
+            print(f"❌ Ошибка цвета ячеек: {e}")
 
-    # 🔄 Обновляем количество доступных приложений
     try:
-        sheet.update(range_name="J2", values=[[ready_count]])
+        sheet.update("J2", [[ready_count]])
     except Exception as e:
-        print(f"❌ Ошибка обновления счетчика доступных приложений: {e}")
+        print(f"❌ Ошибка счётчика ready: {e}")
 
-# **Главная функция**
+# 🔁 Главная функция
 def job():
-    print("🔄 Начинаем обновление данных...")
+    print("🔁 Начинаем обновление...")
     data = fetch_all_data()
     update_google_sheets(sheet, data)
-    flush_log()  # Отправляем логи одним запросом
+    flush_log()
+    remove_duplicates_from_log()
     print("✅ Обновление завершено!")
 
-job()  # Запускаем сразу
-
-print("✅ Скрипт завершил работу. Он запустится снова через 5 минут.")
+job()
+print("🕒 Скрипт завершён. Следующий запуск через 5 минут.")
