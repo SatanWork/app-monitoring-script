@@ -30,63 +30,10 @@ apps_google_play = all_values[1:]
 try:
     log_sheet = client.open_by_key(spreadsheet_id).worksheet("Changes Log")
 except gspread.exceptions.WorksheetNotFound:
-    log_sheet = client.open_by_key(spreadsheet_id).add_worksheet(title="Changes Log", rows="1000", cols="5")
+    log_sheet = client.open_by_key(spreadsheet_id).add_worksheet(title="Changes Log", rows="1000", cols="4")
     log_sheet.append_row(["Дата изменения", "Тип изменения", "Номер приложения", "Package"])
 
-# 📝 Логирование изменений
-log_buffer = []
-existing_ban_logs = set()
-
-def load_existing_ban_logs():
-    global existing_ban_logs
-    try:
-        logs = log_sheet.get_all_values()[1:]
-        for row in logs:
-            if len(row) >= 4 and row[1] == "Бан приложения":
-                key = (row[2], row[3])
-                existing_ban_logs.add(key)
-    except Exception as e:
-        print(f"❌ Ошибка загрузки логов: {e}")
-
-def log_change(change_type, app_number, package_name):
-    print(f"📌 Лог: {change_type} – {package_name}")
-    if change_type == "Приложение вернулось в стор":
-        remove_old_ban_log(package_name, app_number)
-    log_buffer.append([datetime.today().strftime("%Y-%m-%d"), change_type, app_number, package_name])
-
-def flush_log():
-    global log_buffer
-    if log_buffer:
-        try:
-            log_sheet.append_rows(log_buffer)
-            print(f"✅ В лог записано: {len(log_buffer)} строк.")
-            log_buffer = []
-        except Exception as e:
-            print(f"❌ Ошибка записи в лог: {e}")
-
-# 🗑️ Удаление "Бан приложения"
-def remove_old_ban_log(package_name, app_number):
-    try:
-        all_logs = log_sheet.get_all_values()
-        headers = all_logs[0]
-        entries = all_logs[1:]
-        updated_logs = [headers]
-        removed = False
-
-        for row in entries:
-            if len(row) >= 4 and row[1] == "Бан приложения" and row[2] == app_number and row[3] == package_name:
-                removed = True
-            else:
-                updated_logs.append(row)
-
-        if removed:
-            log_sheet.clear()
-            log_sheet.append_rows(updated_logs)
-            print(f"🗑️ Удалена запись 'Бан приложения' для {package_name}")
-    except Exception as e:
-        print(f"❌ Ошибка удаления лога: {e}")
-
-# 🧹 Удаление дублей
+# 🧹 Удаление дублей по типу, номеру и package
 def remove_duplicates_from_log():
     try:
         all_logs = log_sheet.get_all_values()
@@ -112,6 +59,31 @@ def remove_duplicates_from_log():
     except Exception as e:
         print(f"❌ Ошибка при удалении дублей: {e}")
 
+# Загружаем существующие логи один раз
+try:
+    existing_logs = set()
+    logs_data = log_sheet.get_all_values()[1:]
+    for row in logs_data:
+        if len(row) >= 4:
+            key = (row[1], row[2], row[3])  # Тип, номер, package
+            existing_logs.add(key)
+except Exception as e:
+    print(f"❌ Ошибка при загрузке логов: {e}")
+    existing_logs = set()
+
+# 📝 Логирование изменений в буфер
+log_buffer = []
+
+def log_change(change_type, app_number, package_name):
+    global existing_logs
+    key = (change_type, app_number, package_name)
+    if key in existing_logs:
+        print(f"⚠️ Пропускаем повторную запись: {key}")
+        return
+    print(f"📌 Лог: {change_type} – {package_name}")
+    log_buffer.append([datetime.today().strftime("%Y-%m-%d"), change_type, app_number, package_name])
+    existing_logs.add(key)
+
 # 📲 Проверка одного приложения
 def fetch_google_play_data(package_name, app_number, existing_status, existing_release_date, existing_not_found_date):
     try:
@@ -133,24 +105,15 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
         if existing_status in ["", None]:
             log_change("Загружено новое приложение", app_number, package_name)
         elif existing_status == "ban" and status == "ready":
-            if (app_number, package_name) in existing_ban_logs:
-                log_change("Приложение вернулось в стор", app_number, package_name)
-            else:
-                log_change("Приложение появилось в сторе", app_number, package_name)
+            log_change("Приложение вернулось в стор", app_number, package_name)
 
         return [package_name, status, final_date, not_found_date]
 
-    except Exception as e:
-        print(f"❌ Ошибка: {e}")
+    except Exception:
         status = "ban"
         not_found_date = existing_not_found_date or datetime.today().strftime("%Y-%m-%d")
-
-        if existing_status in ["", None]:
-            log_change("Загружено новое приложение", app_number, package_name)
-        elif existing_status not in ["ban", None, ""]:
-            if (app_number, package_name) not in existing_ban_logs:
-                log_change("Бан приложения", app_number, package_name)
-
+        if existing_status not in ["ban", None, ""]:
+            log_change("Бан приложения", app_number, package_name)
         return [package_name, status, existing_release_date, not_found_date]
 
 # 🚀 Проверка всех приложений
@@ -208,10 +171,20 @@ def update_google_sheets(sheet, data):
     except Exception as e:
         print(f"❌ Ошибка счётчика ready: {e}")
 
+# 💾 Сохраняем лог буфер в таблицу
+def flush_log():
+    global log_buffer
+    if log_buffer:
+        try:
+            log_sheet.append_rows(log_buffer)
+            print(f"✅ В лог записано: {len(log_buffer)} строк.")
+            log_buffer = []
+        except Exception as e:
+            print(f"❌ Ошибка записи в лог: {e}")
+
 # 🔁 Главная функция
 def job():
     print("🔁 Начинаем обновление...")
-    load_existing_ban_logs()
     data = fetch_all_data()
     update_google_sheets(sheet, data)
     flush_log()
