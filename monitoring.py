@@ -1,3 +1,4 @@
+
 import gspread
 import json
 import os
@@ -32,6 +33,9 @@ try:
 except gspread.exceptions.WorksheetNotFound:
     log_sheet = client.open_by_key(spreadsheet_id).add_worksheet(title="Changes Log", rows="1000", cols="5")
     log_sheet.append_row(["Дата изменения", "Тип изменения", "Номер приложения", "Package", "Название приложения"])
+
+# 📝 Буфер логов
+log_buffer = []
 
 # 🧹 Удаление дублей по типу, номеру и package
 def remove_duplicates_from_log():
@@ -91,8 +95,6 @@ def remove_old_ban_log(package_name, app_number):
         print(f"❌ Ошибка удаления записи: {e}")
 
 # 📝 Логирование изменений
-log_buffer = []
-
 def log_change(change_type, app_number, package_name):
     print(f"📌 Лог: {change_type} – {package_name}")
     if change_type == "Приложение вернулось в стор":
