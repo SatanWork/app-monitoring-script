@@ -11,7 +11,7 @@ from datetime import datetime
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 
-# 🔄 Подключение к Google Sheets
+# ------------------- Подключение к Google Sheets -------------------
 logging.info("🔄 Подключаемся к Google Sheets...")
 creds_json = os.getenv("GOOGLE_CREDENTIALS")
 if not creds_json:
@@ -26,17 +26,20 @@ client = gspread.authorize(creds)
 spreadsheet_id = "1DpbYJ5f6zdhIl1zDtn6Z3aCHZRDFTaqhsCrkzNM9Iqo"
 sheet = client.open_by_key(spreadsheet_id).sheet1
 all_values = sheet.get_all_values()
-apps_google_play = all_values[1:]  # Пропускаем заголовок
+apps_google_play = all_values[1:]  # Пропускаем заголовок основной таблицы
 
-# 🧾 Подключение к листу Changes Log (4 столбца)
+# ------------------- Подключение к листу "Changes Log" -------------------
 try:
     log_sheet = client.open_by_key(spreadsheet_id).worksheet("Changes Log")
 except gspread.exceptions.WorksheetNotFound:
     log_sheet = client.open_by_key(spreadsheet_id).add_worksheet(title="Changes Log", rows="1000", cols="4")
+    # Заголовки: Дата изменения, Тип изменения, Номер приложения, Package
     log_sheet.append_row(["Дата изменения", "Тип изменения", "Номер приложения", "Package"])
 
-# Кэш существующих записей логов (ключ – (Тип, Номер, Package))
+# ------------------- Кэш логов -------------------
+# Ключ – (Тип изменения, Номер приложения, Package)
 existing_log_keys = set()
+
 def init_existing_log_keys():
     global existing_log_keys
     try:
@@ -47,9 +50,10 @@ def init_existing_log_keys():
                 existing_log_keys.add(key)
     except Exception as e:
         logging.error(f"❌ Ошибка при чтении логов: {e}")
+
 init_existing_log_keys()
 
-# 🧹 Удаление дублей из листа логов по ключу (Тип, Номер, Package)
+# ------------------- Удаление дублей в листе логов -------------------
 def remove_duplicates_from_log():
     try:
         all_logs = log_sheet.get_all_values()
@@ -69,15 +73,16 @@ def remove_duplicates_from_log():
             log_sheet.clear()
             log_sheet.append_rows(cleaned)
             logging.info(f"🧹 Удалено {len(all_logs) - len(cleaned)} дублей.")
+            # Обновляем кэш
+            init_existing_log_keys()
     except Exception as e:
         logging.error(f"❌ Ошибка при удалении дублей: {e}")
 
-# 🔎 Проверка наличия записи "Бан приложения" по (Номер, Package)
+# ------------------- Проверка и удаление записи "Бан приложения" -------------------
 def check_ban_log_exists(package_name, app_number):
     key = ("Бан приложения", app_number, package_name)
     return key in existing_log_keys
 
-# 🗑️ Удаление записей "Бан приложения" для (Номер, Package)
 def remove_old_ban_log(package_name, app_number):
     try:
         all_logs = log_sheet.get_all_values()
@@ -91,18 +96,19 @@ def remove_old_ban_log(package_name, app_number):
         if removed:
             log_sheet.clear()
             log_sheet.append_rows(updated_logs)
-            init_existing_log_keys()  # Обновляем кэш
-            logging.info(f"🗑️ Удалена старая запись 'Бан приложения' для {package_name} (№ {app_number})")
+            logging.info(f"🗑️ Удалена запись 'Бан приложения' для {package_name} (№ {app_number})")
+            # Обновляем кэш
+            init_existing_log_keys()
     except Exception as e:
         logging.error(f"❌ Ошибка удаления записи: {e}")
 
-# 📝 Буфер для логирования (batch)
+# ------------------- Логирование изменений (с буфером) -------------------
 log_buffer = []
 
 def log_change(change_type, app_number, package_name):
     date_str = datetime.today().strftime("%Y-%m-%d")
     key = (change_type, app_number, package_name)
-    # Если такая запись уже есть в кэше или в буфере, пропускаем
+    # Если запись уже есть – пропускаем
     if key in existing_log_keys:
         logging.info(f"⚠️ Запись уже существует: {change_type} – {app_number}")
         return
@@ -110,6 +116,7 @@ def log_change(change_type, app_number, package_name):
         if (entry[1], entry[2], entry[3]) == key:
             logging.info(f"⚠️ Запись уже в буфере: {change_type} – {app_number}")
             return
+    # Если приложение вернулось в стор, удаляем предыдущий бан
     if change_type == "Приложение вернулось в стор":
         remove_old_ban_log(package_name, app_number)
     log_buffer.append([date_str, change_type, app_number, package_name])
@@ -126,7 +133,7 @@ def flush_log():
         except Exception as e:
             logging.error(f"❌ Ошибка записи в лог: {e}")
 
-# 📲 Проверка одного приложения
+# ------------------- Проверка одного приложения -------------------
 def fetch_google_play_data(package_name, app_number, existing_status, existing_release_date, existing_not_found_date):
     try:
         logging.info(f"🔍 Проверяем {package_name} (№ {app_number})...")
@@ -164,7 +171,7 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
                 logging.info(f"⚠️ Повтор записи в логе – пропускаем: {package_name}")
         return [package_name, status, existing_release_date, not_found_date]
 
-# 🚀 Проверка всех приложений
+# ------------------- Проверка всех приложений -------------------
 def fetch_all_data():
     logging.info("🚀 Старт проверки всех приложений...")
     apps_list = [
@@ -174,7 +181,7 @@ def fetch_all_data():
     with ThreadPoolExecutor(max_workers=5) as executor:
         return list(executor.map(lambda x: fetch_google_play_data(*x), apps_list))
 
-# 🧾 Обновление основной таблицы
+# ------------------- Обновление основной таблицы -------------------
 def update_google_sheets(sheet, data):
     logging.info("📋 Обновляем основную таблицу...")
     all_values = sheet.get_all_values()
@@ -193,6 +200,7 @@ def update_google_sheets(sheet, data):
                 ])
                 if app_data[1] == "ready":
                     ready_count += 1
+                # Обновление цвета ячейки: зеленый для ready, красный для ban
                 color = {"red": 0.8, "green": 1, "blue": 0.8} if app_data[1] == "ready" else {"red": 1, "green": 0.8, "blue": 0.8}
                 color_updates.append({"range": f"A{i}", "format": {"backgroundColor": color}})
                 break
@@ -208,17 +216,17 @@ def update_google_sheets(sheet, data):
         except Exception as e:
             logging.error(f"❌ Ошибка изменения цвета ячеек: {e}")
     try:
-        # Используем новый порядок аргументов: values, range_name
+        # Обновляем счётчик (новый порядок аргументов: values, range_name)
         sheet.update(values=[[ready_count]], range_name="J2")
     except Exception as e:
         logging.error(f"❌ Ошибка обновления счётчика ready: {e}")
 
-# 🔁 Главная функция обновления
+# ------------------- Главная функция -------------------
 def job():
     logging.info("🔁 Начинаем обновление...")
     data = fetch_all_data()
     update_google_sheets(sheet, data)
-    flush_log()            # Записываем логи батчем
+    flush_log()  # Записываем логи батчем
     remove_duplicates_from_log()  # Удаляем дубли в логах
     logging.info("✅ Обновление завершено!")
 
