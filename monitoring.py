@@ -27,17 +27,10 @@ sheet = client.open_by_key(spreadsheet_id).sheet1  # Основная табли
 
 # Загружаем все данные из таблицы
 all_values = sheet.get_all_values()
-apps_google_play = all_values[1:]  # Убираем заголовок
+apps_google_play = all_values[1:]  
 
-# Проверяем, существует ли лист "Changes Log", если нет – создаём
-try:
-    log_sheet = client.open_by_key(spreadsheet_id).worksheet("Changes Log")
-except gspread.exceptions.WorksheetNotFound:
-    print("❌ Лист 'Changes Log' не найден, создаём его...")
-    log_sheet = client.open_by_key(spreadsheet_id).add_worksheet(title="Changes Log", rows="1000", cols="4")
-    log_sheet.append_row(["Дата изменения", "Тип изменения", "Номер приложения", "Package"])  # Заголовки
+log_sheet = client.open_by_key(spreadsheet_id).worksheet("Changes Log")
 
-# Функция записи изменений в лог
 # Функция проверки и удаления старого лога "Бан приложения", если приложение вернулось в стор
 def remove_old_ban_log(package_name):
     try:
@@ -55,7 +48,7 @@ def remove_old_ban_log(package_name):
                 updated_logs.append(row)  # Оставляем остальные записи
 
         if removed:
-            log_sheet.clear()  # Полностью очищаем лог-лист
+            log_sheet.clear()  
             log_sheet.append_rows(updated_logs)  # Перезаписываем без удалённых строк
             print(f"🗑️ Удалена старая запись 'Бан приложения' для {package_name}")
 
