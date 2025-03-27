@@ -86,7 +86,7 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
         data = app(package_name)
 
         status = "ready"
-
+        developer_name = data.get("developer", "")
         release_date = data.get("released")
         last_updated = data.get("updated")
 
@@ -119,7 +119,7 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
             else:
                 log_change("Приложение появилось в сторе", app_number, package_name)
 
-        return [package_name, status, final_date, not_found_date]
+        return [package_name, status, final_date, not_found_date, developer_name]
 
     except Exception as e:
         print(f"❌ Ошибка при проверке {package_name}: {e}")
@@ -132,7 +132,7 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
         elif existing_status not in ["ban", None, ""]:
             log_change("Бан приложения", app_number, package_name)
 
-        return [package_name, status, existing_release_date, not_found_date]
+        return [package_name, status, existing_release_date, not_found_date, ""]
 
 # **Функция проверки всех приложений**
 def fetch_all_data():
@@ -166,6 +166,7 @@ def update_google_sheets(sheet, data):
                 updates.append({"range": f"D{i}", "values": [[app_data[1]]]})
                 updates.append({"range": f"F{i}", "values": [[app_data[2]]]})
                 updates.append({"range": f"G{i}", "values": [[app_data[3]]]})
+                updates.append({"range": f"E{i}", "values": [[app_data[4]]]})
 
                 if app_data[1] == "ready":
                     ready_count += 1
