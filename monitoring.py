@@ -108,7 +108,16 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
         if existing_status in ["", None]:  
             log_change("Загружено новое приложение", app_number, package_name)
         elif existing_status == "ban" and status == "ready":
-            log_change("Приложение появилось в сторе", app_number, package_name)
+            # Проверим, есть ли старая запись "Бан приложения" — если есть, то логируем "вернулось"
+            logs = log_sheet.get_all_values()
+            found_ban = any(
+                row[1] == "Бан приложения" and row[3] == package_name
+                for row in logs
+            )
+            if found_ban:
+                log_change("Приложение вернулось в стор", app_number, package_name)
+            else:
+                log_change("Приложение появилось в сторе", app_number, package_name)
 
         return [package_name, status, final_date, not_found_date]
 
