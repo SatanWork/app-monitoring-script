@@ -148,11 +148,7 @@ def fetch_all_data():
         return list(executor.map(lambda x: fetch_google_play_data(x[1], x[0], x[2], x[3], x[4]), apps_list))
 
 # **Обновление данных в Google Sheets**
-def update_google_sheets(sheet, data):
-    print("🔄 Перезагружаем данные из Google Sheets...")
-    all_values = sheet.get_all_values()  # Загружаем актуальные данные
-    apps_google_play = all_values[1:]  # Пропускаем заголовки
-
+def update_google_sheets(sheet, data, apps_google_play):
     print("🔄 Обновляем данные в Google Sheets...")
 
     updates = []
@@ -201,10 +197,10 @@ def update_google_sheets(sheet, data):
 def job():
     print("🔄 Начинаем обновление данных...")
     data = fetch_all_data()
-    update_google_sheets(sheet, data)
-    flush_log()  # Отправляем логи одним запросом
+    update_google_sheets(sheet, data, apps_google_play)
+    flush_log() 
     print("✅ Обновление завершено!")
 
-job()  # Запускаем сразу
+job()
 
 print("✅ Скрипт завершил работу. Он запустится снова через 5 минут.")
