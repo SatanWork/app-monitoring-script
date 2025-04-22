@@ -35,19 +35,25 @@ def remove_old_ban_log(package_name):
         log_sheet = spreadsheet.worksheet("Changes Log")
 
         all_logs = log_sheet.get_all_values()
+        if not all_logs:
+            return
+
         headers = all_logs[0]
-        updated_logs = [headers]
+        rows = all_logs[1:]  # Все строки кроме заголовка
+
+        updated_logs = []
         removed = False
 
-        for row in all_logs[1:]:
+        for row in rows:
             if len(row) >= 4 and row[1] == "Бан приложения" and row[3] == package_name:
                 removed = True
             else:
                 updated_logs.append(row)
 
         if removed:
-            log_sheet.clear()
-            log_sheet.append_rows(updated_logs)
+            log_sheet.resize(rows=1)
+            if updated_logs:
+                log_sheet.append_rows(updated_logs)
             print(f"🗑️ Удалена старая запись 'Бан приложения' для {package_name}")
 
     except Exception as e:
@@ -122,11 +128,11 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
 
         return [package_name, status, existing_release_date, not_found_date, ""]
 
-def fetch_all_data():
+def fetch_all_data(apps_list_raw):
     print("🚀 Запуск проверки всех приложений...")
     apps_list = [
         (row[0], row[7], row[3], row[5], row[6])
-        for row in apps_google_play if len(row) >= 8 and row[7]
+        for row in apps_list_raw if len(row) >= 8 and row[7]
     ]
     print(f"✅ Найдено {len(apps_list)} приложений для проверки.")
     with ThreadPoolExecutor(max_workers=3) as executor:
@@ -174,11 +180,13 @@ def update_google_sheets(sheet, data, apps_google_play):
 
 def job():
     print("🔄 Начинаем обновление данных...")
-    data = fetch_all_data()
-    update_google_sheets(sheet, data, apps_google_play)
+    all_values = sheet.get_all_values()
+    current_apps = all_values[1:]
+    data = fetch_all_data(current_apps)
+    update_google_sheets(sheet, data, current_apps)
     flush_log()
     print("✅ Обновление завершено!")
 
 job()
 
-print("✅ Скрипт завершил работу. Он запустится снова через 5 минут.")
+print("✅ Скрипт завершил работу. Он запустится снова через 10 минут.")
