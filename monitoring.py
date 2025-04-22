@@ -39,7 +39,7 @@ def remove_old_ban_log(package_name):
             return
 
         headers = all_logs[0]
-        rows = all_logs[1:]  # Все строки кроме заголовка
+        rows = all_logs[1:]
 
         updated_logs = []
         removed = False
@@ -51,13 +51,15 @@ def remove_old_ban_log(package_name):
                 updated_logs.append(row)
 
         if removed:
-            log_sheet.resize(rows=1)
+            log_sheet.clear() 
+            log_sheet.append_row(headers)  # возвращаем заголовок
             if updated_logs:
                 log_sheet.append_rows(updated_logs)
             print(f"🗑️ Удалена старая запись 'Бан приложения' для {package_name}")
 
     except Exception as e:
         print(f"❌ Ошибка при очистке старого лога: {e}")
+
 
 log_buffer = []
 
@@ -131,7 +133,7 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
 def fetch_all_data(apps_list_raw):
     print("🚀 Запуск проверки всех приложений...")
     apps_list = [
-        (row[0], row[7], row[3], row[5], row[6])
+        (row[0], row[7].strip(), row[3].strip(), row[5].strip(), row[6].strip())
         for row in apps_list_raw if len(row) >= 8 and row[7]
     ]
     print(f"✅ Найдено {len(apps_list)} приложений для проверки.")
