@@ -129,7 +129,7 @@ def fetch_all_data():
         for row in apps_google_play if len(row) >= 8 and row[7]
     ]
     print(f"✅ Найдено {len(apps_list)} приложений для проверки.")
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=3) as executor:
         return list(executor.map(lambda x: fetch_google_play_data(x[1], x[0], x[2], x[3], x[4]), apps_list))
 
 def update_google_sheets(sheet, data, apps_google_play):
