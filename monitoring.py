@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import time
 
+# 🔄 Подключение к Google Sheets
 print("🔄 Подключаемся к Google Sheets...")
 
 creds_json = os.getenv("GOOGLE_CREDENTIALS")
@@ -24,8 +25,8 @@ spreadsheet_id = "1DpbYJ5f6zdhIl1zDtn6Z3aCHZRDFTaqhsCrkzNM9Iqo"
 sheet = client.open_by_key(spreadsheet_id).sheet1
 log_sheet = client.open_by_key(spreadsheet_id).worksheet("Changes Log")
 
-all_values_initial = sheet.get_all_values()
-apps_google_play_initial = all_values_initial[1:]
+all_values = sheet.get_all_values()
+apps_google_play = all_values[1:]
 
 log_buffer = []
 
@@ -67,6 +68,7 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
         print(f"🔍 Проверяем {package_name}...")
         time.sleep(0.5)
         data = app(package_name)
+
         status = "ready"
         developer_name = data.get("developer", "")
         release_date = data.get("released")
@@ -96,8 +98,15 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
     except Exception:
         return None
 
-def fetch_all_data(apps_list):
+def fetch_all_data():
+    print("🚀 Запуск проверки всех приложений...")
+    apps_list = []
+    for row in apps_google_play:
+        if len(row) >= 8 and row[7]:
+            apps_list.append((row[0], row[7], row[3], row[5], row[6]))
+
     print(f"✅ Найдено {len(apps_list)} приложений для проверки.")
+
     remaining = apps_list
     results = []
     max_attempts = 3
@@ -135,7 +144,7 @@ def fetch_all_data(apps_list):
     return results
 
 def update_google_sheets(sheet, data):
-    print("🔄 Повторно загружаем данные из Google Sheets перед обновлением...")
+    print("🔄 Перезагружаем данные из Google Sheets...")
     all_values = sheet.get_all_values()
     apps_google_play = all_values[1:]
 
@@ -144,8 +153,6 @@ def update_google_sheets(sheet, data):
     color_updates = []
 
     for i, row in enumerate(apps_google_play, start=2):
-        if len(row) < 8:
-            continue
         package_name = row[7]
         for app_data in data:
             if app_data[0] == package_name:
@@ -176,9 +183,8 @@ def update_google_sheets(sheet, data):
         print(f"❌ Ошибка обновления счётчика доступных приложений: {e}")
 
 def job():
-    print("🚀 Старт задачи...")
-    apps_list = [row for row in apps_google_play_initial if len(row) >= 8 and row[7]]
-    data = fetch_all_data(apps_list)
+    print("🔄 Начинаем обновление данных...")
+    data = fetch_all_data()
     update_google_sheets(sheet, data)
     flush_log()
     print("✅ Обновление завершено!")
