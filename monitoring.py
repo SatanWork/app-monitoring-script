@@ -144,7 +144,7 @@ def fetch_all_data():
             apps_list.append((row[0], row[7], row[3], row[5], row[6]))
 
     print(f"✅ Найдено {len(apps_list)} приложений для проверки.")
-    with ThreadPoolExecutor(max_workers=2) as executor:
+    with ThreadPoolExecutor(max_workers=1) as executor:
         return list(executor.map(lambda x: fetch_google_play_data(x[1], x[0], x[2], x[3], x[4]), apps_list))
 
 # **Обновление данных в Google Sheets**
