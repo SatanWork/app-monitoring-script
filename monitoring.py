@@ -1,17 +1,17 @@
 import gspread
 import json
 import os
-import time
 from oauth2client.service_account import ServiceAccountCredentials
 from google_play_scraper import app
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+import time
 
 print("🔄 Подключаемся к Google Sheets...")
 
 creds_json = os.getenv("GOOGLE_CREDENTIALS")
 if not creds_json:
-    raise ValueError("❌ GOOGLE_CREDENTIALS не найдены!")
+    raise ValueError("❌ Ошибка: GOOGLE_CREDENTIALS не найдены!")
 
 creds_dict = json.loads(creds_json)
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, [
@@ -24,6 +24,9 @@ spreadsheet_id = "1DpbYJ5f6zdhIl1zDtn6Z3aCHZRDFTaqhsCrkzNM9Iqo"
 sheet = client.open_by_key(spreadsheet_id).sheet1
 log_sheet = client.open_by_key(spreadsheet_id).worksheet("Changes Log")
 
+all_values_initial = sheet.get_all_values()
+apps_google_play_initial = all_values_initial[1:]
+
 log_buffer = []
 
 def remove_old_ban_log(package_name):
@@ -31,13 +34,11 @@ def remove_old_ban_log(package_name):
         all_logs = log_sheet.get_all_values()
         updated_logs = []
         removed = False
-
         for row in all_logs:
             if len(row) >= 4 and row[1] == "Бан приложения" and row[3] == package_name:
                 removed = True
             else:
                 updated_logs.append(row)
-
         if removed:
             log_sheet.clear()
             log_sheet.append_rows(updated_logs)
@@ -61,119 +62,126 @@ def flush_log():
         except Exception as e:
             print(f"❌ Ошибка записи в 'Changes Log': {e}")
 
-def convert_timestamp(value):
-    if isinstance(value, int) and value > 1000000000:
-        return datetime.utcfromtimestamp(value).strftime("%Y-%m-%d")
-    return value
-
-def fetch_google_play_data(package_name):
+def fetch_google_play_data(package_name, app_number, existing_status, existing_release_date, existing_not_found_date):
     try:
+        print(f"🔍 Проверяем {package_name}...")
         time.sleep(0.5)
         data = app(package_name)
-        developer = data.get("developer", "")
-        release = convert_timestamp(data.get("released"))
-        updated = convert_timestamp(data.get("updated"))
-        final_date = release or updated or "Не найдено"
-        return {
-            "package": package_name,
-            "status": "ready",
-            "release": final_date,
-            "not_found_date": "",
-            "developer": developer,
-        }
+        status = "ready"
+        developer_name = data.get("developer", "")
+        release_date = data.get("released")
+        last_updated = data.get("updated")
+
+        def convert_timestamp(value):
+            if isinstance(value, int) and value > 1000000000:
+                return datetime.utcfromtimestamp(value).strftime("%Y-%m-%d")
+            return value
+
+        release_date = convert_timestamp(release_date)
+        last_updated = convert_timestamp(last_updated)
+        final_date = release_date if release_date else last_updated or "Не найдено"
+        not_found_date = ""
+
+        if existing_status in ["", None]:
+            log_change("Загружено новое приложение", app_number, package_name)
+        elif existing_status == "ban" and status == "ready":
+            logs = log_sheet.get_all_values()
+            found_ban = any(row[1] == "Бан приложения" and row[3] == package_name for row in logs)
+            if found_ban:
+                log_change("Приложение вернулось в стор", app_number, package_name)
+            else:
+                log_change("Приложение появилось в сторе", app_number, package_name)
+
+        return [package_name, status, final_date, not_found_date, developer_name]
     except Exception:
-        return {
-            "package": package_name,
-            "status": "ban",
-            "release": "",
-            "not_found_date": datetime.today().strftime("%Y-%m-%d"),
-            "developer": ""
-        }
+        return None
 
-def retry_fetch(apps, retries=3, delay=30):
-    for attempt in range(retries):
-        print(f"🔁 Попытка {attempt + 1} из {retries}")
+def fetch_all_data(apps_list):
+    print(f"✅ Найдено {len(apps_list)} приложений для проверки.")
+    remaining = apps_list
+    results = []
+    max_attempts = 3
+
+    for attempt in range(max_attempts):
+        print(f"🔁 Попытка {attempt + 1} из {max_attempts}")
         with ThreadPoolExecutor(max_workers=3) as executor:
-            results = list(executor.map(lambda pkg: fetch_google_play_data(pkg[1]), apps))
+            partial_results = list(executor.map(
+                lambda x: fetch_google_play_data(x[1], x[0], x[2], x[3], x[4]), remaining
+            ))
 
-        not_found = [app for app, result in zip(apps, results) if result["status"] == "ban" and result["developer"] == ""]
-        found = [result for result in results if result["status"] == "ready" or result["developer"]]
+        next_remaining = []
+        for i, result in enumerate(partial_results):
+            if result is None:
+                next_remaining.append(remaining[i])
+            else:
+                results.append(result)
 
-        if not not_found or attempt == retries - 1:
-            return found + [fetch_google_play_data(pkg[1]) for pkg in not_found]
-        time.sleep(delay)
+        if not next_remaining:
+            break
+        if attempt < max_attempts - 1:
+            print("⏳ Ожидаем 30 секунд перед следующей попыткой...")
+            time.sleep(30)
+        remaining = next_remaining
 
-def update_google_sheets(data):
-    print("🔄 Загружаем актуальные данные из таблицы...")
-    current_data = sheet.get_all_values()
-    apps_google_play = current_data[1:]
+    for row in remaining:
+        app_number, package_name, status, release, not_found = row
+        not_found_date = not_found or datetime.today().strftime("%Y-%m-%d")
+        if status in ["", None]:
+            log_change("Загружено новое приложение", app_number, package_name)
+        elif status not in ["ban", None, ""]:
+            log_change("Бан приложения", app_number, package_name)
+        results.append([package_name, "ban", release, not_found_date, ""])
+
+    return results
+
+def update_google_sheets(sheet, data):
+    print("🔄 Повторно загружаем данные из Google Sheets перед обновлением...")
+    all_values = sheet.get_all_values()
+    apps_google_play = all_values[1:]
 
     updates = []
     ready_count = 0
     color_updates = []
 
     for i, row in enumerate(apps_google_play, start=2):
-        if len(row) < 8 or not row[7]:
+        if len(row) < 8:
             continue
-        package = row[7]
-        match = next((d for d in data if d["package"] == package), None)
-        if not match:
-            continue
-
-        old_status = row[3]
-        new_status = match["status"]
-
-        if old_status != new_status:
-            if old_status == "ban" and new_status == "ready":
-                log_change("Приложение вернулось в стор", row[0], package)
-            elif old_status not in ["ban", "", None] and new_status == "ban":
-                log_change("Бан приложения", row[0], package)
-            elif old_status in ["", None] and new_status == "ready":
-                log_change("Загружено новое приложение", row[0], package)
-
-        updates.extend([
-            {"range": f"D{i}", "values": [[new_status]]},
-            {"range": f"F{i}", "values": [[match['release']]]},
-            {"range": f"G{i}", "values": [[match['not_found_date']]]},
-            {"range": f"E{i}", "values": [[match['developer']]]},
-        ])
-
-        color = {"red": 0.8, "green": 1, "blue": 0.8} if new_status == "ready" else {"red": 1, "green": 0.8, "blue": 0.8}
-        color_updates.append({"range": f"A{i}", "format": {"backgroundColor": color}})
-
-        if new_status == "ready":
-            ready_count += 1
+        package_name = row[7]
+        for app_data in data:
+            if app_data[0] == package_name:
+                updates.append({"range": f"D{i}", "values": [[app_data[1]]]})
+                updates.append({"range": f"F{i}", "values": [[app_data[2]]]})
+                updates.append({"range": f"G{i}", "values": [[app_data[3]]]})
+                updates.append({"range": f"E{i}", "values": [[app_data[4]]]})
+                if app_data[1] == "ready":
+                    ready_count += 1
+                color = {"red": 0.8, "green": 1, "blue": 0.8} if app_data[1] == "ready" else {"red": 1, "green": 0.8, "blue": 0.8}
+                color_updates.append({"range": f"A{i}", "format": {"backgroundColor": color}})
+                break
 
     if updates:
         try:
             sheet.batch_update(updates)
-            print("✅ Таблица обновлена.")
+            print(f"✅ Данные обновлены. Доступных приложений: {ready_count}")
         except Exception as e:
-            print(f"❌ Ошибка при обновлении: {e}")
-
+            print(f"❌ Ошибка обновления данных: {e}")
     if color_updates:
         try:
             sheet.batch_format(color_updates)
         except Exception as e:
-            print(f"❌ Ошибка форматирования: {e}")
-
+            print(f"❌ Ошибка изменения цвета ячеек: {e}")
     try:
         sheet.update(range_name="J2", values=[[ready_count]])
     except Exception as e:
-        print(f"❌ Ошибка обновления счётчика: {e}")
+        print(f"❌ Ошибка обновления счётчика доступных приложений: {e}")
 
 def job():
     print("🚀 Старт задачи...")
-
-    all_values = sheet.get_all_values()
-    apps_google_play = all_values[1:]
-
-    current_data = fetch_all_data(apps_google_play)
-    update_google_sheets(sheet, current_data, apps_google_play)
+    apps_list = [row for row in apps_google_play_initial if len(row) >= 8 and row[7]]
+    data = fetch_all_data(apps_list)
+    update_google_sheets(sheet, data)
     flush_log()
-
     print("✅ Обновление завершено!")
 
-
 job()
-print("⏳ Скрипт завершил работу. Он запустится снова через 10 минут.")
+print("✅ Скрипт завершил работу. Он запустится снова через 10 минут.")
