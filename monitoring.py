@@ -153,16 +153,33 @@ def update_google_sheets(sheet, data):
     color_updates = []
 
     for i, row in enumerate(apps_google_play, start=2):
+        if len(row) < 8:
+            continue
         package_name = row[7]
+        existing_status = row[3]  # Статус в таблице
         for app_data in data:
             if app_data[0] == package_name:
+                new_status = app_data[1]
+                if new_status != existing_status:
+                    if existing_status != "ban" and new_status == "ban":
+                        log_change("Бан приложения", row[0], package_name)
+                    elif existing_status == "ban" and new_status == "ready":
+                        logs = log_sheet.get_all_values()
+                        found_ban = any(r[1] == "Бан приложения" and r[3] == package_name for r in logs)
+                        if found_ban:
+                            log_change("Приложение вернулось в стор", row[0], package_name)
+                        else:
+                            log_change("Приложение появилось в сторе", row[0], package_name)
+
                 updates.append({"range": f"D{i}", "values": [[app_data[1]]]})
                 updates.append({"range": f"F{i}", "values": [[app_data[2]]]})
                 updates.append({"range": f"G{i}", "values": [[app_data[3]]]})
                 updates.append({"range": f"E{i}", "values": [[app_data[4]]]})
+
                 if app_data[1] == "ready":
                     ready_count += 1
-                color = {"red": 0.8, "green": 1, "blue": 0.8} if app_data[1] == "ready" else {"red": 1, "green": 0.8, "blue": 0.8}
+
+                color = {"red": 0.8, "green": 1, "blue": 0.8} if new_status == "ready" else {"red": 1, "green": 0.8, "blue": 0.8}
                 color_updates.append({"range": f"A{i}", "format": {"backgroundColor": color}})
                 break
 
