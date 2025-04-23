@@ -164,11 +164,16 @@ def update_google_sheets(data):
 
 def job():
     print("🚀 Старт задачи...")
-    apps_list = [row for row in apps_google_play if len(row) >= 8 and row[7]]
-    data = retry_fetch(apps_list)
-    update_google_sheets(data)
+
+    all_values = sheet.get_all_values()
+    apps_google_play = all_values[1:]
+
+    current_data = fetch_all_data(apps_google_play)
+    update_google_sheets(sheet, current_data, apps_google_play)
     flush_log()
-    print("✅ Задача завершена.")
+
+    print("✅ Обновление завершено!")
+
 
 job()
 print("⏳ Скрипт завершил работу. Он запустится снова через 10 минут.")
