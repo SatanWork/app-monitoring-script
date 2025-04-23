@@ -113,7 +113,7 @@ def fetch_all_data():
 
     for attempt in range(max_attempts):
         print(f"🔁 Попытка {attempt + 1} из {max_attempts}")
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             partial_results = list(executor.map(
                 lambda x: fetch_google_play_data(x[1], x[0], x[2], x[3], x[4]), remaining
             ))
