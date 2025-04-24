@@ -27,7 +27,6 @@ log_sheet = client.open_by_key(spreadsheet_id).worksheet("Changes Log")
 
 all_values = sheet.get_all_values()
 apps_google_play = all_values[1:]
-
 log_buffer = []
 
 def remove_old_ban_log(package_name):
@@ -47,23 +46,20 @@ def remove_old_ban_log(package_name):
     except Exception as e:
         print(f"❌ Ошибка при очистке старого лога: {e}")
 
-logged_entries = set()  # Глобально в начале скрипта
-
 def log_change(change_type, app_number, package_name):
-    global logged_entries
-
-    entry_key = (package_name, change_type)
-
-    if entry_key in logged_entries:
+    all_logs = log_sheet.get_all_values()
+    already_logged = any(
+        row[1] == change_type and row[3] == package_name
+        for row in all_logs
+    )
+    if already_logged:
+        print(f"⚠️ Пропущено логирование (уже есть запись): {change_type} - {package_name}")
         return
 
     print(f"📌 Логируем: {change_type} - {package_name}")
-
     if change_type == "Приложение вернулось в стор":
         remove_old_ban_log(package_name)
-
     log_buffer.append([datetime.today().strftime("%Y-%m-%d"), change_type, app_number, package_name])
-    logged_entries.add(entry_key)
 
 def flush_log():
     global log_buffer
@@ -144,19 +140,22 @@ def fetch_all_data():
             time.sleep(30)
         remaining = next_remaining
 
-    # 🔄 Обработка оставшихся после всех попыток
+    all_logs = log_sheet.get_all_values()
+
     for row in remaining:
-        app_number, package_name, existing_status, release, not_found = row
+        app_number, package_name, status, release, not_found = row
         not_found_date = not_found or datetime.today().strftime("%Y-%m-%d")
-        
-        if existing_status in ["", None]:
-            # Новое приложение, ещё не появилось в сторе — логируем как новое, не баним
-            log_change("Загружено новое приложение", app_number, package_name)
-            results.append([package_name, "", release, not_found_date, ""])
-        else:
-            # Приложение исчезло из стора — логируем бан
-            log_change("Бан приложения", app_number, package_name)
-            results.append([package_name, "ban", release, not_found_date, ""])
+        already_banned = any(
+            log[1] == "Бан приложения" and log[3] == package_name
+            for log in all_logs
+        )
+        if not already_banned:
+            if status in ["", None]:
+                log_change("Загружено новое приложение", app_number, package_name)
+            elif status not in ["ban", None, ""]:
+                log_change("Бан приложения", app_number, package_name)
+        results.append([package_name, "ban", release, not_found_date, ""])
+
     return results
 
 def update_google_sheets(sheet, data):
@@ -169,33 +168,16 @@ def update_google_sheets(sheet, data):
     color_updates = []
 
     for i, row in enumerate(apps_google_play, start=2):
-        if len(row) < 8:
-            continue
         package_name = row[7]
-        existing_status = row[3]  # Статус в таблице
         for app_data in data:
             if app_data[0] == package_name:
-                new_status = app_data[1]
-                if new_status != existing_status:
-                    if existing_status != "ban" and new_status == "ban":
-                        log_change("Бан приложения", row[0], package_name)
-                    elif existing_status == "ban" and new_status == "ready":
-                        logs = log_sheet.get_all_values()
-                        found_ban = any(r[1] == "Бан приложения" and r[3] == package_name for r in logs)
-                        if found_ban:
-                            log_change("Приложение вернулось в стор", row[0], package_name)
-                        else:
-                            log_change("Приложение появилось в сторе", row[0], package_name)
-
                 updates.append({"range": f"D{i}", "values": [[app_data[1]]]})
                 updates.append({"range": f"F{i}", "values": [[app_data[2]]]})
                 updates.append({"range": f"G{i}", "values": [[app_data[3]]]})
                 updates.append({"range": f"E{i}", "values": [[app_data[4]]]})
-
                 if app_data[1] == "ready":
                     ready_count += 1
-
-                color = {"red": 0.8, "green": 1, "blue": 0.8} if new_status == "ready" else {"red": 1, "green": 0.8, "blue": 0.8}
+                color = {"red": 0.8, "green": 1, "blue": 0.8} if app_data[1] == "ready" else {"red": 1, "green": 0.8, "blue": 0.8}
                 color_updates.append({"range": f"A{i}", "format": {"backgroundColor": color}})
                 break
 
