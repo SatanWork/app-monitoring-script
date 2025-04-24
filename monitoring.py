@@ -144,15 +144,19 @@ def fetch_all_data():
             time.sleep(30)
         remaining = next_remaining
 
+    # 🔄 Обработка оставшихся после всех попыток
     for row in remaining:
-        app_number, package_name, status, release, not_found = row
+        app_number, package_name, existing_status, release, not_found = row
         not_found_date = not_found or datetime.today().strftime("%Y-%m-%d")
-        if status in ["", None]:
+        
+        if existing_status in ["", None]:
+            # Новое приложение, ещё не появилось в сторе — логируем как новое, не баним
             log_change("Загружено новое приложение", app_number, package_name)
-        elif status not in ["ban", None, ""]:
+            results.append([package_name, "", release, not_found_date, ""])
+        else:
+            # Приложение исчезло из стора — логируем бан
             log_change("Бан приложения", app_number, package_name)
-        results.append([package_name, "ban", release, not_found_date, ""])
-
+            results.append([package_name, "ban", release, not_found_date, ""])
     return results
 
 def update_google_sheets(sheet, data):
