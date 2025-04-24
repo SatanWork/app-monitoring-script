@@ -47,13 +47,14 @@ def remove_old_ban_log(package_name):
     except Exception as e:
         print(f"❌ Ошибка при очистке старого лога: {e}")
 
-logged_packages = set()  # глобально в начале скрипта
+logged_entries = set()  # Глобально в начале скрипта
 
 def log_change(change_type, app_number, package_name):
-    global logged_packages
+    global logged_entries
 
-    # если уже логировали — пропускаем
-    if package_name in logged_packages:
+    entry_key = (package_name, change_type)
+
+    if entry_key in logged_entries:
         return
 
     print(f"📌 Логируем: {change_type} - {package_name}")
@@ -62,7 +63,7 @@ def log_change(change_type, app_number, package_name):
         remove_old_ban_log(package_name)
 
     log_buffer.append([datetime.today().strftime("%Y-%m-%d"), change_type, app_number, package_name])
-    logged_packages.add(package_name)
+    logged_entries.add(entry_key)
 
 def flush_log():
     global log_buffer
