@@ -27,6 +27,7 @@ log_sheet = client.open_by_key(spreadsheet_id).worksheet("Changes Log")
 
 all_values = sheet.get_all_values()
 apps_google_play = all_values[1:]
+
 log_buffer = []
 
 def remove_old_ban_log(package_name):
@@ -47,15 +48,6 @@ def remove_old_ban_log(package_name):
         print(f"❌ Ошибка при очистке старого лога: {e}")
 
 def log_change(change_type, app_number, package_name):
-    all_logs = log_sheet.get_all_values()
-    already_logged = any(
-        row[1] == change_type and row[3] == package_name
-        for row in all_logs
-    )
-    if already_logged:
-        print(f"⚠️ Пропущено логирование (уже есть запись): {change_type} - {package_name}")
-        return
-
     print(f"📌 Логируем: {change_type} - {package_name}")
     if change_type == "Приложение вернулось в стор":
         remove_old_ban_log(package_name)
@@ -92,16 +84,6 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
         final_date = release_date if release_date else last_updated or "Не найдено"
         not_found_date = ""
 
-        if existing_status in ["", None]:
-            log_change("Загружено новое приложение", app_number, package_name)
-        elif existing_status == "ban" and status == "ready":
-            logs = log_sheet.get_all_values()
-            found_ban = any(row[1] == "Бан приложения" and row[3] == package_name for row in logs)
-            if found_ban:
-                log_change("Приложение вернулось в стор", app_number, package_name)
-            else:
-                log_change("Приложение появилось в сторе", app_number, package_name)
-
         return [package_name, status, final_date, not_found_date, developer_name]
     except Exception:
         return None
@@ -121,7 +103,7 @@ def fetch_all_data():
 
     for attempt in range(max_attempts):
         print(f"🔁 Попытка {attempt + 1} из {max_attempts}")
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             partial_results = list(executor.map(
                 lambda x: fetch_google_play_data(x[1], x[0], x[2], x[3], x[4]), remaining
             ))
@@ -140,20 +122,9 @@ def fetch_all_data():
             time.sleep(30)
         remaining = next_remaining
 
-    all_logs = log_sheet.get_all_values()
-
     for row in remaining:
         app_number, package_name, status, release, not_found = row
         not_found_date = not_found or datetime.today().strftime("%Y-%m-%d")
-        already_banned = any(
-            log[1] == "Бан приложения" and log[3] == package_name
-            for log in all_logs
-        )
-        if not already_banned:
-            if status in ["", None]:
-                log_change("Загружено новое приложение", app_number, package_name)
-            elif status not in ["ban", None, ""]:
-                log_change("Бан приложения", app_number, package_name)
         results.append([package_name, "ban", release, not_found_date, ""])
 
     return results
@@ -168,16 +139,45 @@ def update_google_sheets(sheet, data):
     color_updates = []
 
     for i, row in enumerate(apps_google_play, start=2):
+        if len(row) < 8:
+            continue
+
+        app_number = row[0]
         package_name = row[7]
+        old_status = row[3]
+        old_release = row[5]
+        old_not_found = row[6]
+        old_developer = row[4]
+
         for app_data in data:
             if app_data[0] == package_name:
-                updates.append({"range": f"D{i}", "values": [[app_data[1]]]})
-                updates.append({"range": f"F{i}", "values": [[app_data[2]]]})
-                updates.append({"range": f"G{i}", "values": [[app_data[3]]]})
-                updates.append({"range": f"E{i}", "values": [[app_data[4]]]})
-                if app_data[1] == "ready":
+                new_status = app_data[1]
+                new_release = app_data[2]
+                new_not_found = app_data[3]
+                new_developer = app_data[4]
+
+                # Только если что-то изменилось
+                if (old_status != new_status or old_release != new_release or
+                        old_not_found != new_not_found or old_developer != new_developer):
+
+                    updates.append({"range": f"D{i}", "values": [[new_status]]})
+                    updates.append({"range": f"F{i}", "values": [[new_release]]})
+                    updates.append({"range": f"G{i}", "values": [[new_not_found]]})
+                    updates.append({"range": f"E{i}", "values": [[new_developer]]})
+
+                    # Логика логирования
+                    if old_status != new_status:
+                        if old_status in ["", None] and new_status == "ready":
+                            log_change("Загружено новое приложение", app_number, package_name)
+                        elif old_status == "ban" and new_status == "ready":
+                            log_change("Приложение вернулось в стор", app_number, package_name)
+                        elif old_status == "ready" and new_status == "ban":
+                            log_change("Бан приложения", app_number, package_name)
+
+                if new_status == "ready":
                     ready_count += 1
-                color = {"red": 0.8, "green": 1, "blue": 0.8} if app_data[1] == "ready" else {"red": 1, "green": 0.8, "blue": 0.8}
+
+                color = {"red": 0.8, "green": 1, "blue": 0.8} if new_status == "ready" else {"red": 1, "green": 0.8, "blue": 0.8}
                 color_updates.append({"range": f"A{i}", "format": {"backgroundColor": color}})
                 break
 
