@@ -99,11 +99,11 @@ def fetch_all_data():
 
     remaining = apps_list
     results = []
-    max_attempts = 3
+    max_attempts = 5
 
     for attempt in range(max_attempts):
         print(f"🔁 Попытка {attempt + 1} из {max_attempts}")
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=5) as executor:
             partial_results = list(executor.map(
                 lambda x: fetch_google_play_data(x[1], x[0], x[2], x[3], x[4]), remaining
             ))
@@ -118,8 +118,8 @@ def fetch_all_data():
         if not next_remaining:
             break
         if attempt < max_attempts - 1:
-            print("⏳ Ожидаем 30 секунд перед следующей попыткой...")
-            time.sleep(30)
+            print("⏳ Ожидаем 5 секунд перед следующей попыткой...")
+            time.sleep(5)
         remaining = next_remaining
 
     for row in remaining:
