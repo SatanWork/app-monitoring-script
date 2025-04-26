@@ -81,10 +81,29 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
 
         release_date = convert_timestamp(release_date)
         last_updated = convert_timestamp(last_updated)
+
         final_date = release_date if release_date else last_updated or "Не найдено"
         not_found_date = ""
 
+        # 🛠️ Новый исправленный блок логирования:
+        if existing_status in ["", None]:
+            log_change("Загружено новое приложение", app_number, package_name)
+        elif existing_status == "ban" and status == "ready":
+            logs = log_sheet.get_all_values()
+            found_ban = any(row[1] == "Бан приложения" and row[3] == package_name for row in logs)
+
+            if found_ban:
+                # Приложение реально вернулось после бана
+                log_change("Приложение вернулось в стор", app_number, package_name)
+            else:
+                # Проверяем дату релиза: если нет даты — это новое приложение
+                if existing_release_date in ["", "Не найдено", None]:
+                    log_change("Приложение появилось в сторе", app_number, package_name)
+                else:
+                    log_change("Приложение вернулось в стор", app_number, package_name)
+
         return [package_name, status, final_date, not_found_date, developer_name]
+
     except Exception:
         return None
 
