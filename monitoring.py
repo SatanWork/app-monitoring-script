@@ -97,7 +97,7 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
                 log_change("Приложение вернулось в стор", app_number, package_name)
             else:
                 # Проверяем дату релиза: если нет даты — это новое приложение
-                if existing_release_date in ["", "Не найдено", None]:
+                if existing_release_date in ["", None]:
                     log_change("Приложение появилось в сторе", app_number, package_name)
                 else:
                     log_change("Приложение вернулось в стор", app_number, package_name)
