@@ -85,7 +85,6 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
         final_date = release_date if release_date else last_updated or "Не найдено"
         not_found_date = ""
 
-        # 🛠️ Новый правильный блок логирования
         if existing_status in ["", None]:
             log_change("Загружено новое приложение", app_number, package_name)
         elif existing_status == "ban" and status == "ready":
@@ -93,7 +92,6 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
             found_ban = any(row[1] == "Бан приложения" and row[3] == package_name for row in logs)
 
             if found_ban:
-                # Важно: если в старой таблице релиза не было, а сейчас появился - значит это новое появление
                 if existing_release_date in ["", "Не найдено", None] and release_date not in ["", "Не найдено", None]:
                     log_change("Приложение появилось в сторе", app_number, package_name)
                 else:
@@ -172,7 +170,6 @@ def update_google_sheets(sheet, data):
                 new_not_found = app_data[3]
                 new_developer = app_data[4]
 
-                # Только если что-то изменилось
                 if (old_status != new_status or old_release != new_release or
                         old_not_found != new_not_found or old_developer != new_developer):
 
@@ -181,12 +178,14 @@ def update_google_sheets(sheet, data):
                     updates.append({"range": f"G{i}", "values": [[new_not_found]]})
                     updates.append({"range": f"E{i}", "values": [[new_developer]]})
 
-                    # Логика логирования
                     if old_status != new_status:
                         if old_status in ["", None] and new_status == "ready":
                             log_change("Загружено новое приложение", app_number, package_name)
                         elif old_status == "ban" and new_status == "ready":
-                            log_change("Приложение вернулось в стор", app_number, package_name)
+                            if old_release in ["", "Не найдено", None] and new_release not in ["", "Не найдено", None]:
+                                log_change("Приложение появилось в сторе", app_number, package_name)
+                            else:
+                                log_change("Приложение вернулось в стор", app_number, package_name)
                         elif old_status == "ready" and new_status == "ban":
                             log_change("Бан приложения", app_number, package_name)
 
