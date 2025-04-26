@@ -94,7 +94,7 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
 
             if found_ban:
                 # Важно: если в старой таблице релиза не было, а сейчас появился - значит это новое появление
-                if existing_release_date in ["", None] and release_date not in ["", None]:
+                if existing_release_date in ["", "Не найдено", None] and release_date not in ["", "Не найдено", None]:
                     log_change("Приложение появилось в сторе", app_number, package_name)
                 else:
                     log_change("Приложение вернулось в стор", app_number, package_name)
