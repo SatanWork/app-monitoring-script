@@ -187,10 +187,11 @@ def update_google_sheets(sheet, data):
                         today = datetime.today().strftime("%Y-%m-%d")
                         unique_key = f"{today}-{app_number}-{package_name}"
                     
-                        if old_status in ["", None] and new_status == "ready":
+                        if old_status in ["", None] and new_status in ["ready", "ban"]:
                             if unique_key + "-Загружено новое приложение" not in known_log_entries:
                                 log_change("Загружено новое приложение", app_number, package_name)
                                 known_log_entries.add(unique_key + "-Загружено новое приложение")
+
                         elif old_status == "ban" and new_status == "ready":
                             if old_release in ["", "Не найдено", None] and new_release not in ["", "Не найдено", None]:
                                 if unique_key + "-Приложение появилось в сторе" not in known_log_entries:
