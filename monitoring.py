@@ -142,11 +142,6 @@ def fetch_all_data():
     for row in remaining:
         app_number, package_name, status, release, not_found = row
         not_found_date = not_found or datetime.today().strftime("%Y-%m-%d")
-        
-        if status in ["", None]:  # Новое приложение
-            log_change("Загружено новое приложение", app_number, package_name)
-        elif status == "ready":  # Было в сторе, теперь пропало
-            log_change("Бан приложения", app_number, package_name)
 
         results.append([package_name, "ban", release, not_found_date, ""])
 
