@@ -182,30 +182,33 @@ def update_google_sheets(sheet, data):
                     updates.append({"range": f"G{i}", "values": [[new_not_found]]})
                     updates.append({"range": f"E{i}", "values": [[new_developer]]})
 
-                    # Логика логирования
-                    if old_status != new_status:
-                        today = datetime.today().strftime("%Y-%m-%d")
-                        unique_key = f"{today}-{app_number}-{package_name}"
-                    
-                        if old_status in ["", None] and new_status in ["ready", "ban"]:
-                            if unique_key + "-Загружено новое приложение" not in known_log_entries:
-                                log_change("Загружено новое приложение", app_number, package_name)
-                                known_log_entries.add(unique_key + "-Загружено новое приложение")
+                    today = datetime.today().strftime("%Y-%m-%d")
+                    base_key = f"{today}-{app_number}-{package_name}"
 
-                        elif old_status == "ban" and new_status == "ready":
-                            if old_release in ["", "Не найдено", None] and new_release not in ["", "Не найдено", None]:
-                                if unique_key + "-Приложение появилось в сторе" not in known_log_entries:
-                                    log_change("Приложение появилось в сторе", app_number, package_name)
-                                    known_log_entries.add(unique_key + "-Приложение появилось в сторе")
-                            else:
-                                if unique_key + "-Приложение вернулось в стор" not in known_log_entries:
-                                    log_change("Приложение вернулось в стор", app_number, package_name)
-                                    known_log_entries.add(unique_key + "-Приложение вернулось в стор")
-                        elif old_status == "ready" and new_status == "ban":
-                            if unique_key + "-Бан приложения" not in known_log_entries:
-                                log_change("Бан приложения", app_number, package_name)
-                                known_log_entries.add(unique_key + "-Бан приложения")
-                    
+                    # Логика логирования с проверкой дублей
+                    if old_status in ["", None] and new_status in ["ready", "ban"]:
+                        log_key = base_key + "-Загружено новое приложение"
+                        if log_key not in known_log_entries:
+                            log_change("Загружено новое приложение", app_number, package_name)
+                            known_log_entries.add(log_key)
+
+                    elif old_status == "ban" and new_status == "ready":
+                        if old_release in ["", "Не найдено", None] and new_release not in ["", "Не найдено", None]:
+                            log_key = base_key + "-Приложение появилось в сторе"
+                            if log_key not in known_log_entries:
+                                log_change("Приложение появилось в сторе", app_number, package_name)
+                                known_log_entries.add(log_key)
+                        else:
+                            log_key = base_key + "-Приложение вернулось в стор"
+                            if log_key not in known_log_entries:
+                                log_change("Приложение вернулось в стор", app_number, package_name)
+                                known_log_entries.add(log_key)
+
+                    elif old_status == "ready" and new_status == "ban":
+                        log_key = base_key + "-Бан приложения"
+                        if log_key not in known_log_entries:
+                            log_change("Бан приложения", app_number, package_name)
+                            known_log_entries.add(log_key)
 
                 if new_status == "ready":
                     ready_count += 1
