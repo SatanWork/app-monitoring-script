@@ -171,7 +171,7 @@ def update_google_sheets(sheet, data):
                     today = datetime.today().strftime("%Y-%m-%d")
                     base_key = f"{today}-{app_number}-{package_name}"
 
-                    # Логика логирования с проверкой дублей
+                    # Логирование с проверкой дублей
                     if old_status in ["", None] and new_status in ["ready", "ban"]:
                         log_key = base_key + "-Загружено новое приложение"
                         if log_key not in known_log_entries:
@@ -179,7 +179,10 @@ def update_google_sheets(sheet, data):
                             known_log_entries.add(log_key)
 
                     elif old_status == "ban" and new_status == "ready":
-                        if old_release in ["", "Не найдено", None] and new_release not in ["", "Не найдено", None]:
+                        if (old_release in ["", "Не найдено", None] and
+                            new_release not in ["", "Не найдено", None] and
+                            old_not_found not in ["", "Не найдено", None]):
+                            
                             log_key = base_key + "-Приложение появилось в сторе"
                             if log_key not in known_log_entries:
                                 log_change("Приложение появилось в сторе", app_number, package_name)
