@@ -161,17 +161,21 @@ def update_google_sheets(sheet, data):
                 new_not_found = app_data[3]
                 new_developer = app_data[4]
 
-                if (old_status != new_status or old_release != new_release or
+                need_release_update = old_release in ["", "Не найдено", None] and new_release not in ["", "Не найдено", None]
+
+                if (old_status != new_status or need_release_update or
                         old_not_found != new_not_found or old_developer != new_developer):
 
                     updates.append({"range": f"D{i}", "values": [[new_status]]})
-                    updates.append({"range": f"F{i}", "values": [[new_release]]})
                     updates.append({"range": f"G{i}", "values": [[new_not_found]]})
                     updates.append({"range": f"E{i}", "values": [[new_developer]]})
+                    
+                    if need_release_update:
+                        updates.append({"range": f"F{i}", "values": [[new_release]]})
 
                     base_key = f"{today}-{app_number}-{package_name}"
 
-                    # ✅ Логика логирования
+                    # Логика логирования
                     if old_status in ["", None] and new_status in ["ready", "ban"]:
                         log_key = base_key + "-Загружено новое приложение"
                         if log_key not in known_log_entries:
@@ -180,18 +184,16 @@ def update_google_sheets(sheet, data):
 
                     elif old_status == "ban" and new_status == "ready":
                         if old_release in ["", "Не найдено", None] and new_release not in ["", "Не найдено", None]:
-                            # Приложение появилось в сторе впервые
                             log_key = base_key + "-Приложение появилось в сторе"
                             if log_key not in known_log_entries:
                                 log_change("Приложение появилось в сторе", app_number, package_name)
                                 known_log_entries.add(log_key)
                         elif old_release not in ["", "Не найдено", None]:
-                            # Приложение уже появлялось раньше — это возврат
                             log_key = base_key + "-Приложение вернулось в стор"
                             if log_key not in known_log_entries:
                                 log_change("Приложение вернулось в стор", app_number, package_name)
                                 known_log_entries.add(log_key)
-                    
+
                     elif old_status == "ready" and new_status == "ban":
                         log_key = base_key + "-Бан приложения"
                         if log_key not in known_log_entries:
