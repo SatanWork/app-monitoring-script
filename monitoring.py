@@ -162,16 +162,18 @@ def update_google_sheets(sheet, data):
                 new_developer = app_data[4]
 
                 need_release_update = old_release in ["", "Не найдено", None] and new_release not in ["", "Не найдено", None]
+                need_developer_update = new_status == "ready" and old_developer != new_developer
 
                 if (old_status != new_status or need_release_update or
-                        old_not_found != new_not_found or old_developer != new_developer):
+                        old_not_found != new_not_found or need_developer_update):
 
                     updates.append({"range": f"D{i}", "values": [[new_status]]})
                     updates.append({"range": f"G{i}", "values": [[new_not_found]]})
-                    updates.append({"range": f"E{i}", "values": [[new_developer]]})
-                    
+
                     if need_release_update:
                         updates.append({"range": f"F{i}", "values": [[new_release]]})
+                    if need_developer_update:
+                        updates.append({"range": f"E{i}", "values": [[new_developer]]})
 
                     base_key = f"{today}-{app_number}-{package_name}"
 
