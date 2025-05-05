@@ -179,20 +179,19 @@ def update_google_sheets(sheet, data):
                             known_log_entries.add(log_key)
 
                     elif old_status == "ban" and new_status == "ready":
-                        if (old_release in ["", "Не найдено", None] and
-                            new_release not in ["", "Не найдено", None] and
-                            old_not_found not in ["", "Не найдено", None] and
-                            old_not_found != today):
+                        if old_release in ["", "Не найдено", None] and new_release not in ["", "Не найдено", None]:
+                            # Приложение появилось в сторе впервые
                             log_key = base_key + "-Приложение появилось в сторе"
                             if log_key not in known_log_entries:
                                 log_change("Приложение появилось в сторе", app_number, package_name)
                                 known_log_entries.add(log_key)
-                        else:
+                        elif old_release not in ["", "Не найдено", None]:
+                            # Приложение уже появлялось раньше — это возврат
                             log_key = base_key + "-Приложение вернулось в стор"
                             if log_key not in known_log_entries:
                                 log_change("Приложение вернулось в стор", app_number, package_name)
                                 known_log_entries.add(log_key)
-
+                    
                     elif old_status == "ready" and new_status == "ban":
                         log_key = base_key + "-Бан приложения"
                         if log_key not in known_log_entries:
