@@ -223,6 +223,7 @@ def update_google_sheets(sheet, data):
     except Exception as e:
         print(f"❌ Ошибка обновления счётчика доступных приложений: {e}")
 
+
 def job():
     print("🔄 Начинаем обновление данных...")
     data = fetch_all_data()
