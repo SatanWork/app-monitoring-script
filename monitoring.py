@@ -138,17 +138,13 @@ def update_google_sheets(sheet, data):
     all_values = sheet.get_all_values()
     apps_google_play = all_values[1:]
 
-    # Загрузка уже известных логов, чтобы избежать повторов
-    existing_logs = log_sheet.get_all_values()
-    for row in existing_logs:
-        if len(row) >= 4:
-            log_key = f"{row[0]}-{row[2]}-{row[3]}-{row[1]}"
-            known_log_entries.add(log_key)
-
     updates = []
     ready_count = 0
     color_updates = []
     today = datetime.today().strftime("%Y-%m-%d")
+
+    def is_empty(val):
+        return val is None or str(val).strip().lower() in ["", "не найдено"]
 
     for i, row in enumerate(apps_google_play, start=2):
         if len(row) < 8:
@@ -168,7 +164,7 @@ def update_google_sheets(sheet, data):
                 new_not_found = app_data[3]
                 new_developer = app_data[4]
 
-                need_release_update = old_release in ["", "Не найдено", None] and new_release not in ["", "Не найдено", None]
+                need_release_update = is_empty(old_release) and not is_empty(new_release)
                 need_developer_update = new_status == "ready" and old_developer != new_developer
 
                 if (old_status != new_status or need_release_update or
@@ -182,24 +178,32 @@ def update_google_sheets(sheet, data):
                     if need_developer_update:
                         updates.append({"range": f"E{i}", "values": [[new_developer]]})
 
-                    # 🔁 Логирование
-                    def try_log(change_type):
-                        log_key = f"{today}-{app_number}-{package_name}-{change_type}"
+                    base_key = f"{today}-{app_number}-{package_name}"
+
+                    # ✅ Логика логирования
+                    if old_status in ["", None] and new_status in ["ready", "ban"]:
+                        log_key = base_key + "-Загружено новое приложение"
                         if log_key not in known_log_entries:
-                            log_change(change_type, app_number, package_name)
+                            log_change("Загружено новое приложение", app_number, package_name)
                             known_log_entries.add(log_key)
 
-                    if old_status in ["", None] and new_status in ["ready", "ban"]:
-                        try_log("Загружено новое приложение")
-
                     elif old_status == "ban" and new_status == "ready":
-                        if old_release in ["", "Не найдено", None] and new_release not in ["", "Не найдено", None]:
-                            try_log("Приложение появилось в сторе")
-                        elif old_release not in ["", "Не найдено", None]:
-                            try_log("Приложение вернулось в стор")
+                        if is_empty(old_release) and not is_empty(new_release):
+                            log_key = base_key + "-Приложение появилось в сторе"
+                            if log_key not in known_log_entries:
+                                log_change("Приложение появилось в сторе", app_number, package_name)
+                                known_log_entries.add(log_key)
+                        elif not is_empty(old_release):
+                            log_key = base_key + "-Приложение вернулось в стор"
+                            if log_key not in known_log_entries:
+                                log_change("Приложение вернулось в стор", app_number, package_name)
+                                known_log_entries.add(log_key)
 
                     elif old_status == "ready" and new_status == "ban":
-                        try_log("Бан приложения")
+                        log_key = base_key + "-Бан приложения"
+                        if log_key not in known_log_entries:
+                            log_change("Бан приложения", app_number, package_name)
+                            known_log_entries.add(log_key)
 
                 if new_status == "ready":
                     ready_count += 1
@@ -223,7 +227,6 @@ def update_google_sheets(sheet, data):
         sheet.update(range_name="J2", values=[[ready_count]])
     except Exception as e:
         print(f"❌ Ошибка обновления счётчика доступных приложений: {e}")
-
 
 def job():
     print("🔄 Начинаем обновление данных...")
