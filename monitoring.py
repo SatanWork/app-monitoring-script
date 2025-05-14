@@ -59,10 +59,14 @@ def flush_log():
     if log_buffer:
         try:
             log_sheet.append_rows(log_buffer)
-            print(f"✅ В лог записано {len(log_buffer)} изменений.")
+            print(f"✅ В лог записано {len(log_buffer)} изменений:")
+            for row in log_buffer:
+                print(f"   ➕ {row}")
             log_buffer = []
         except Exception as e:
-            print(f"❌ Ошибка записи в 'Changes Log': {e}")
+            print(f"❌ Ошибка записи в 'Changes Log': {repr(e)}")
+            for row in log_buffer:
+                print(f"   🚫 Не записано: {row}")
 
 def fetch_google_play_data(package_name, app_number, existing_status, existing_release_date, existing_not_found_date):
     try:
