@@ -151,82 +151,79 @@ def update_google_sheets(sheet, data):
         if len(row) < 8:
             continue
 
-        app_number = row[0]
-        package_name = row[7]
-        old_status = row[3]
-        old_release = row[5]
-        old_not_found = row[6]
-        old_developer = row[4]
+        app_number     = row[0]
+        package_name   = row[7]
+        old_status     = row[3]
+        old_release    = row[5]
+        old_not_found  = row[6]
+        old_developer  = row[4]
 
         for app_data in data:
-            if app_data[0] == package_name:
-                new_status = app_data[1]
-                new_release = app_data[2]
-                new_not_found = app_data[3]
-                new_developer = app_data[4]
+            if app_data[0] != package_name:
+                continue
 
-                need_release_update = old_release in ["", "Не найдено", None] and new_release not in ["", "Не найдено", None]
-                need_developer_update = new_status == "ready" and old_developer != new_developer
+            new_status    = app_data[1]
+            new_release   = app_data[2]
+            new_not_found = app_data[3]
+            new_developer = app_data[4]
 
-                if (old_status != new_status or need_release_update or
-                        old_not_found != new_not_found or need_developer_update):
+            need_release_update   = old_release in ["", "Не найдено", None] and new_release not in ["", "Не найдено", None]
+            need_developer_update = new_status == "ready" and old_developer != new_developer
 
-                    updates.append({"range": f"D{i}", "values": [[new_status]]})
-                    updates.append({"range": f"G{i}", "values": [[new_not_found]]})
+            if (old_status != new_status or
+                need_release_update or
+                old_not_found != new_not_found or
+                need_developer_update):
 
-                    if need_release_update:
-                        updates.append({"range": f"F{i}", "values": [[new_release]]})
-                    if need_developer_update:
-                        updates.append({"range": f"E{i}", "values": [[new_developer]]})
+                updates.append({"range": f"D{i}", "values": [[new_status]]})
+                updates.append({"range": f"G{i}", "values": [[new_not_found]]})
 
-                    base_key = f"{today}-{app_number}-{package_name}"
+                if need_release_update:
+                    updates.append({"range": f"F{i}", "values": [[new_release]]})
+                if need_developer_update:
+                    updates.append({"range": f"E{i}", "values": [[new_developer]]})
 
-                    if old_status in ["", None] and new_status in ["ready", "ban"]:
-                        log_key = base_key + "-Загружено новое приложение"
+                base_key = f"{today}-{app_number}-{package_name}"
+
+                # 📌 Логика логирования
+                if old_status in ["", None] and new_status in ["ready", "ban"]:
+                    log_key = base_key + "-Загружено новое приложение"
+                    if log_key not in known_log_entries:
+                        log_change("Загружено новое приложение", app_number, package_name)
+                        known_log_entries.add(log_key)
+
+                elif old_status == "ban" and new_status == "ready":
+                    # Первый выход из бана → приложение появилось
+                    if old_release in ["", "Не найдено", None] and new_release not in ["", "Не найдено", None]:
+                        log_key = base_key + "-Приложение появилось в сторе"
                         if log_key not in known_log_entries:
-                            print(f"🧩 Логируем: {log_key}")
-                            log_change("Загружено новое приложение", app_number, package_name)
+                            log_change("Приложение появилось в сторе", app_number, package_name)
+                            known_log_entries.add(log_key)
+                    else:
+                        # У него уже когда-то стояла дата релиза → это возврат
+                        log_key = base_key + "-Приложение вернулось в стор"
+                        if log_key not in known_log_entries:
+                            log_change("Приложение вернулось в стор", app_number, package_name)
                             known_log_entries.add(log_key)
 
-                    elif old_status == "ban" and new_status == "ready":
-                        if old_release in ["", "Не найдено", None] and new_release not in ["", "Не найдено", None]:
-                            log_key = base_key + "-Приложение появилось в сторе"
-                            if log_key not in known_log_entries:
-                                print(f"🧩 Логируем: {log_key}")
-                                log_change("Приложение появилось в сторе", app_number, package_name)
-                                known_log_entries.add(log_key)
-                        elif old_release not in ["", "Не найдено", None]:
-                            log_key = base_key + "-Приложение вернулось в стор"
-                            if log_key not in known_log_entries:
-                                print(f"🧩 Логируем: {log_key}")
-                                log_change("Приложение вернулось в стор", app_number, package_name)
-                                known_log_entries.add(log_key)
+                elif old_status == "ready" and new_status == "ban":
+                    log_key = base_key + "-Бан приложения"
+                    if log_key not in known_log_entries:
+                        log_change("Бан приложения", app_number, package_name)
+                        known_log_entries.add(log_key)
 
-                    elif old_status == "ready" and new_status == "ban":
-                        log_key = base_key + "-Бан приложения"
-                        if log_key not in known_log_entries:
-                            print(f"🧩 Логируем: {log_key}")
-                            log_change("Бан приложения", app_number, package_name)
-                            known_log_entries.add(log_key)
+            if new_status == "ready":
+                ready_count += 1
 
-                if new_status == "ready":
-                    ready_count += 1
-
-                color = {"red": 0.8, "green": 1, "blue": 0.8} if new_status == "ready" else {"red": 1, "green": 0.8, "blue": 0.8}
-                color_updates.append({"range": f"A{i}", "format": {"backgroundColor": color}})
-                break
+            color = {"red": 0.8, "green": 1, "blue": 0.8} if new_status == "ready" else {"red": 1, "green": 0.8, "blue": 0.8}
+            color_updates.append({"range": f"A{i}", "format": {"backgroundColor": color}})
+            break
 
     if updates:
-        try:
-            sheet.batch_update(updates)
-            print(f"✅ Данные обновлены. Доступных приложений: {ready_count}")
-        except Exception as e:
-            print(f"❌ Ошибка обновления данных: {e}")
+        sheet.batch_update(updates)
+        print(f"✅ Данные обновлены. Доступных приложений: {ready_count}")
     if color_updates:
-        try:
-            sheet.batch_format(color_updates)
-        except Exception as e:
-            print(f"❌ Ошибка изменения цвета ячеек: {e}")
+        sheet.batch_format(color_updates)
     try:
         sheet.update(range_name="J2", values=[[ready_count]])
     except Exception as e:
