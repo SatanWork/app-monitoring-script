@@ -158,16 +158,27 @@ def update_google_sheets(sheet, data):
         old_not_found  = row[6]
         old_developer  = row[4]
 
+        # нормализуем old_release
+        old_rel_norm = (old_release or "").strip().lower()
+        is_empty_release = (old_rel_norm == "" or old_rel_norm == "не найдено")
+        # проверяем, есть ли новая дата
+        new_release = None
+        for app_data in data:
+            if app_data[0] == package_name:
+                new_release = app_data[2]
+                break
+        has_new_release = bool(new_release and new_release != "Не найдено")
+
+        # нормальная логика обновления
         for app_data in data:
             if app_data[0] != package_name:
                 continue
 
             new_status    = app_data[1]
-            new_release   = app_data[2]
             new_not_found = app_data[3]
             new_developer = app_data[4]
 
-            need_release_update   = old_release in ["", "Не найдено", None] and new_release not in ["", "Не найдено", None]
+            need_release_update   = is_empty_release and has_new_release
             need_developer_update = new_status == "ready" and old_developer != new_developer
 
             if (old_status != new_status or
@@ -193,14 +204,14 @@ def update_google_sheets(sheet, data):
                         known_log_entries.add(log_key)
 
                 elif old_status == "ban" and new_status == "ready":
-                    # Первый выход из бана → приложение появилось
-                    if old_release in ["", "Не найдено", None] and new_release not in ["", "Не найдено", None]:
+                    if is_empty_release and has_new_release:
+                        # впервые появилось в сторе
                         log_key = base_key + "-Приложение появилось в сторе"
                         if log_key not in known_log_entries:
                             log_change("Приложение появилось в сторе", app_number, package_name)
                             known_log_entries.add(log_key)
                     else:
-                        # У него уже когда-то стояла дата релиза → это возврат
+                        # уже имело дату — значит вернулось
                         log_key = base_key + "-Приложение вернулось в стор"
                         if log_key not in known_log_entries:
                             log_change("Приложение вернулось в стор", app_number, package_name)
