@@ -175,11 +175,10 @@ def update_google_sheets(sheet, data):
                 old_not_found != new_not_found or
                 need_developer_update):
 
-                # всегда обновляем статус и дату not_found
                 updates.append({"range": f"D{i}", "values": [[new_status]]})
                 updates.append({"range": f"G{i}", "values": [[new_not_found]]})
 
-                # переход ban → ready: будем обновлять release/developer только при первом «появлении»
+                    
                 if old_status == "ban" and new_status == "ready":
                     # читаем весь лог, чтобы понять, было ли уже «Появилось в сторе»
                     logs = log_sheet.get_all_values()
@@ -189,7 +188,6 @@ def update_google_sheets(sheet, data):
                     )
 
                     if not has_appeared:
-                        # первое появление — пишем release/developer
                         updates.append({"range": f"F{i}", "values": [[new_release]]})
                         updates.append({"range": f"E{i}", "values": [[new_developer]]})
                         log_key = f"{today}-{app_number}-{package_name}-Приложение появилось в сторе"
@@ -197,20 +195,18 @@ def update_google_sheets(sheet, data):
                             log_change("Приложение появилось в сторе", app_number, package_name)
                             known_log_entries.add(log_key)
                     else:
-                        # повторный выход из бана — только лог
                         log_key = f"{today}-{app_number}-{package_name}-Приложение вернулось в стор"
                         if log_key not in known_log_entries:
                             log_change("Приложение вернулось в стор", app_number, package_name)
                             known_log_entries.add(log_key)
 
                 else:
-                    # все остальные случаи — обновляем по флагам
                     if need_release_update:
                         updates.append({"range": f"F{i}", "values": [[new_release]]})
                     if need_developer_update:
                         updates.append({"range": f"E{i}", "values": [[new_developer]]})
 
-                    # логика «Загружено новое приложение» и «Бан приложения» остаётся прежней
+                    
                     if old_status in ["", None] and new_status in ["ready", "ban"]:
                         log_key = f"{today}-{app_number}-{package_name}-Загружено новое приложение"
                         if log_key not in known_log_entries:
