@@ -4,7 +4,7 @@ import os
 from oauth2client.service_account import ServiceAccountCredentials
 from google_play_scraper import app
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import datetime
 import time
 
 # 🔄 Подключение к Google Sheets
@@ -22,14 +22,13 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, [
 client = gspread.authorize(creds)
 
 spreadsheet_id = "1DpbYJ5f6zdhIl1zDtn6Z3aCHZRDFTaqhsCrkzNM9Iqo"
-sheet      = client.open_by_key(spreadsheet_id).sheet1
-log_sheet  = client.open_by_key(spreadsheet_id).worksheet("Changes Log")
-archive_sh = client.open_by_key(spreadsheet_id).worksheet("Archive")
+sheet = client.open_by_key(spreadsheet_id).sheet1
+log_sheet = client.open_by_key(spreadsheet_id).worksheet("Changes Log")
 
-all_values       = sheet.get_all_values()
+all_values = sheet.get_all_values()
 apps_google_play = all_values[1:]
 
-log_buffer        = []
+log_buffer = []
 known_log_entries = set()
 
 def remove_old_ban_log(package_name):
@@ -77,8 +76,8 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
 
         status = "ready"
         developer_name = data.get("developer", "")
-        release_date   = data.get("released")
-        last_updated   = data.get("updated")
+        release_date = data.get("released")
+        last_updated = data.get("updated")
 
         def convert_timestamp(value):
             if isinstance(value, int) and value > 1000000000:
@@ -88,7 +87,7 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
         release_date = convert_timestamp(release_date)
         last_updated = convert_timestamp(last_updated)
 
-        final_date     = release_date if release_date else last_updated or "Не найдено"
+        final_date = release_date if release_date else last_updated or "Не найдено"
         not_found_date = ""
 
         return [package_name, status, final_date, not_found_date, developer_name]
@@ -97,15 +96,16 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
         return None
 
 def fetch_all_data():
-    print("🚀 Запуск проверки всех приложений (основные)...")
+    print("🚀 Запуск проверки всех приложений...")
     apps_list = []
     for row in apps_google_play:
         if len(row) >= 8 and row[7]:
             apps_list.append((row[0], row[7], row[3], row[5], row[6]))
 
     print(f"✅ Найдено {len(apps_list)} приложений для проверки.")
-    remaining    = apps_list
-    results      = []
+
+    remaining = apps_list
+    results = []
     max_attempts = 5
 
     for attempt in range(max_attempts):
@@ -114,12 +114,14 @@ def fetch_all_data():
             partial_results = list(executor.map(
                 lambda x: fetch_google_play_data(x[1], x[0], x[2], x[3], x[4]), remaining
             ))
+
         next_remaining = []
         for i, result in enumerate(partial_results):
             if result is None:
                 next_remaining.append(remaining[i])
             else:
                 results.append(result)
+
         if not next_remaining:
             break
         if attempt < max_attempts - 1:
@@ -130,56 +132,20 @@ def fetch_all_data():
     for row in remaining:
         app_number, package_name, status, release, not_found = row
         not_found_date = not_found or datetime.today().strftime("%Y-%m-%d")
+
         results.append([package_name, "ban", release, not_found_date, ""])
 
     return results
 
-# ────────────────────────────────────────────────────────────────────────────────
-def archive_old_bans(main_sheet):
-    rows         = main_sheet.get_all_values()[1:]  # без заголовка
-    to_archive   = []
-    today        = datetime.today()
-    cutoff       = today - timedelta(days=30)
-
-    for idx, row in enumerate(rows, start=2):
-        if len(row) < 7:
-            continue
-
-        status       = row[3].strip().lower()
-        ban_date_str = row[6].strip()
-        try:
-            ban_date = datetime.strptime(ban_date_str, "%Y-%m-%d") if ban_date_str else None
-        except:
-            ban_date = None
-
-        if status == "ban" and ban_date and ban_date < cutoff:
-            to_archive.append((idx, row[:9]))  # A–I
-        # иначе оставляем в основном листе
-
-    if not to_archive:
-        return
-
-    archive_rows = []
-    for _, cols_A_to_I in to_archive:
-        archive_rows.append(cols_A_to_I + [ today.strftime("%Y-%m-%d") ])  # + «Last Checked»
-
-    archive_sh.append_rows(archive_rows)
-
-    for idx, _ in reversed(to_archive):
-        main_sheet.delete_rows(idx)
-
-    print(f"🗄️ Перенесено в Archive: {len(to_archive)} строк.")
-# ────────────────────────────────────────────────────────────────────────────────
-
 def update_google_sheets(sheet, data):
     print("🔄 Перезагружаем данные из Google Sheets...")
-    all_values       = sheet.get_all_values()
+    all_values = sheet.get_all_values()
     apps_google_play = all_values[1:]
 
-    updates       = []
-    ready_count   = 0
+    updates = []
+    ready_count = 0
     color_updates = []
-    today         = datetime.today().strftime("%Y-%m-%d")
+    today = datetime.today().strftime("%Y-%m-%d")
 
     for i, row in enumerate(apps_google_play, start=2):
         if len(row) < 8:
@@ -266,85 +232,12 @@ def update_google_sheets(sheet, data):
         print(f"❌ Ошибка обновления счётчика доступных приложений: {e}")
 
 
-def check_archive_and_restore(main_sheet, archive_sheet):
-    rows = archive_sheet.get_all_values()[1:]  # без заголовка
-    today = datetime.today()
-    two_weeks_ago = today - timedelta(days=14)
-
-    for idx, row in enumerate(rows, start=2):
-        # row: [A, B, C, D, E, F, G, H, I, Last Checked]
-        if len(row) < 10:
-            continue
-
-        package_name       = row[7]
-        existing_status    = "ban"
-        existing_release   = row[5]
-        existing_not_found = row[6]
-
-        last_checked_str = row[9].strip()
-        try:
-            last_checked = datetime.strptime(last_checked_str, "%Y-%m-%d")
-        except:
-            last_checked = None
-
-
-        if not last_checked or last_checked < two_weeks_ago:
-            result = fetch_google_play_data(package_name, row[0], existing_status, existing_release, existing_not_found)
-            if result is None:
-
-                archive_sheet.update(f"J{idx}", [[today.strftime("%Y-%m-%d")]])
-                continue
-
-            # result = [package_name, status, final_date, not_found_date, developer_name]
-            _, new_status, new_release, new_not_found, new_developer = result
-
-            if new_status == "ban":
-                archive_sheet.update(f"J{idx}", [[today.strftime("%Y-%m-%d")]])
-                continue
-
-            archive_sheet.delete_rows(idx)
-
-            main_row = [
-                row[0],           
-                "",               
-                "",               
-                "ready",          
-                new_developer,    
-                new_release,      
-                "",               
-                package_name,     
-                row[8]            
-            ]
-            main_sheet.append_row(main_row)
-
-            base_key = f"{today.strftime('%Y-%m-%d')}-{row[0]}-{package_name}"
-            change_type = "Приложение вернулось в стор"
-            log_key = base_key + "-" + change_type
-            if log_key not in known_log_entries:
-                log_change(change_type, row[0], package_name)
-                known_log_entries.add(log_key)
-
-            # Поскольку мы удалили строку из Archive, индексы сдвинутся, поэтому после первой же обработки выходим
-            return
-
 def job():
     print("🔄 Начинаем обновление данных...")
-
-    # 1) Архивируем «старые ban»-строки (>30 дней)
-    archive_old_bans(sheet)
-
-    # 2) Проверяем «Archive» раз в 14 дней и восстанавливаем ready-приложения
-    check_archive_and_restore(sheet, archive_sh)
-
-    # 3) Основная проверка текущих приложений
     data = fetch_all_data()
     update_google_sheets(sheet, data)
-
-    # 4) Записываем накопленный лог
     flush_log()
-
     print("✅ Обновление завершено!")
 
-# Запуск
 job()
 print("✅ Скрипт завершил работу. Он запустится снова через 5 минут.")
