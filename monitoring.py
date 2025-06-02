@@ -94,11 +94,9 @@ def fetch_google_play_data(package_name, app_number, existing_status, existing_r
         return None
 
 def fetch_all_data():
-    # Каждый раз получаем актуальный список из основного листа
     rows = sheet.get_all_values()[1:]  # без заголовка
     apps_list = []
     for row in rows:
-        # ожидаем, что столбец H (индекс 7) содержит package_name
         if len(row) >= 8 and row[7]:
             apps_list.append((row[0], row[7], row[3], row[5], row[6]))
 
@@ -126,7 +124,6 @@ def fetch_all_data():
             time.sleep(5)
         remaining = next_remaining
 
-    # Для тех, кого не удалось получить (ban)
     for row in remaining:
         app_number, package_name, status, release, not_found = row
         not_found_date = not_found or datetime.today().strftime("%Y-%m-%d")
@@ -153,7 +150,6 @@ def archive_old_bans(main_sheet):
         except:
             ban_date = None
 
-        # архивируем только те, чей ban_date < cutoff
         if status == "ban" and ban_date and ban_date < cutoff:
             # убедимся, что у нас есть хотя бы первые 9 столбцов
             full_row = row + [""] * (9 - len(row))
@@ -162,19 +158,17 @@ def archive_old_bans(main_sheet):
     if not to_archive:
         return
 
-    # формируем блок для добавления в Archive
     archive_rows = []
     for _, cols_A_to_I in to_archive:
         archive_rows.append(cols_A_to_I + [today.strftime("%Y-%m-%d")])  # + «Last Checked»
     archive_sh.append_rows(archive_rows)
 
-    # удаляем строки main_sheet, сортируя индексы в порядке убывания
     to_archive.sort(key=lambda x: x[0], reverse=True)
     sheet_id = main_sheet._properties['sheetId']
     requests = []
     for idx, _ in to_archive:
-        start_index = idx - 1  # ноль-ориентированный
-        end_index   = idx      # не включительно
+        start_index = idx - 1  
+        end_index   = idx      
         requests.append({
             'deleteDimension': {
                 'range': {
@@ -229,16 +223,13 @@ def update_google_sheets(sheet, data):
                 old_not_found != new_not_found or
                 need_developer_update):
 
-                # всегда обновляем статус (D) и дату not_found (G)
                 updates.append({"range": f"D{i}", "values": [[new_status]]})
                 updates.append({"range": f"G{i}", "values": [[new_not_found]]})
 
-                # если ban→ready, обновляем дату релиза (F) и дев-нейм (E) обязательно
                 if old_status == "ban" and new_status == "ready":
                     updates.append({"range": f"F{i}", "values": [[new_release]]})
                     updates.append({"range": f"E{i}", "values": [[new_developer]]})
                 else:
-                    # иначе — только по флагам
                     if need_release_update:
                         updates.append({"range": f"F{i}", "values": [[new_release]]})
                     if need_developer_update:
@@ -253,14 +244,12 @@ def update_google_sheets(sheet, data):
                         known_log_entries.add(log_key)
 
                 elif old_status == "ban" and new_status == "ready":
-                    # первый выход из бана — «появилось»
                     if old_release in ["", "Не найдено", None] and new_release not in ["", "Не найдено", None]:
                         log_key = base_key + "-Приложение появилось в сторе"
                         if log_key not in known_log_entries:
                             log_change("Приложение появилось в сторе", app_number, package_name)
                             known_log_entries.add(log_key)
                     else:
-                        # иначе — «вернулось»
                         log_key = base_key + "-Приложение вернулось в стор"
                         if log_key not in known_log_entries:
                             log_change("Приложение вернулось в стор", app_number, package_name)
@@ -325,19 +314,18 @@ def check_archive_and_restore(main_sheet, archive_sheet):
                 archive_sheet.update(f"J{idx}", [[today.strftime("%Y-%m-%d")]])
                 continue
 
-            # восстанавливаем в основной лист
             archive_sheet.delete_rows(idx)
 
             main_row = [
-                row[0],           # A: app_number
-                "",               # B
-                "",               # C
-                "ready",          # D: статус
-                new_developer,    # E: developer
-                new_release,      # F: дата релиза
-                "",               # G: not_found (пусто)
-                package_name,     # H: package
-                row[8]            # I: значение из столбца I в архиве
+                row[0],           
+                "",               
+                "",               
+                "ready",          
+                new_developer,    
+                new_release,      
+                "",               
+                package_name,     
+                row[8]            
             ]
             main_sheet.append_row(main_row)
 
@@ -355,21 +343,16 @@ def check_archive_and_restore(main_sheet, archive_sheet):
 def job():
     print("🔄 Начинаем обновление данных...")
 
-    # 1) Архивируем «старые ban»-строки (>30 дней)
     archive_old_bans(sheet)
 
-    # 2) Проверяем «Archive» раз в 14 дней и восстанавливаем ready-приложения
     check_archive_and_restore(sheet, archive_sh)
 
-    # 3) Основная проверка текущих приложений
     data = fetch_all_data()
     update_google_sheets(sheet, data)
 
-    # 4) Запись накопленного лога
     flush_log()
 
     print("✅ Обновление завершено!")
 
-# Запуск
 job()
 print("✅ Скрипт завершил работу. Он запустится снова через 5 минут.")
