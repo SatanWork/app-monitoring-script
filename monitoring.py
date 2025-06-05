@@ -283,7 +283,7 @@ def update_google_sheets(sheet, data):
 def check_archive_and_restore(main_sheet, archive_sheet):
     rows = archive_sheet.get_all_values()[1:]  
     today = datetime.today()
-    two_weeks_ago = today - timedelta(days=1)
+    two_weeks_ago = today - timedelta(days=14)
 
     for idx, row in enumerate(rows, start=2):
         if len(row) < 10:
