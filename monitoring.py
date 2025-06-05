@@ -151,7 +151,6 @@ def archive_old_bans(main_sheet):
             ban_date = None
 
         if status == "ban" and ban_date and ban_date < cutoff:
-            # убедимся, что у нас есть хотя бы первые 9 столбцов
             full_row = row + [""] * (9 - len(row))
             to_archive.append((idx, full_row[:9]))  # A–I
 
@@ -282,9 +281,9 @@ def update_google_sheets(sheet, data):
 # ────────────────────────────────────────────────────────────────────────────────
 
 def check_archive_and_restore(main_sheet, archive_sheet):
-    rows = archive_sheet.get_all_values()[1:]  # без заголовка
+    rows = archive_sheet.get_all_values()[1:]  
     today = datetime.today()
-    two_weeks_ago = today - timedelta(days=14)
+    two_weeks_ago = today - timedelta(days=1)
 
     for idx, row in enumerate(rows, start=2):
         if len(row) < 10:
