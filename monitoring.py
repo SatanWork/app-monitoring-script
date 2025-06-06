@@ -137,7 +137,7 @@ def archive_old_bans(main_sheet):
     rows       = main_sheet.get_all_values()[1:]  # без заголовка
     to_archive = []
     today      = datetime.today()
-    cutoff     = today - timedelta(days=30)
+    cutoff     = today - timedelta(days=45)
 
     for idx, row in enumerate(rows, start=2):
         if len(row) < 7:
@@ -166,8 +166,8 @@ def archive_old_bans(main_sheet):
     sheet_id = main_sheet._properties['sheetId']
     requests = []
     for idx, _ in to_archive:
-        start_index = idx - 1  
-        end_index   = idx      
+        start_index = idx - 1  # ноль-ориентированный
+        end_index   = idx      # не включительно
         requests.append({
             'deleteDimension': {
                 'range': {
@@ -178,7 +178,6 @@ def archive_old_bans(main_sheet):
                 }
             }
         })
-
     main_sheet.spreadsheet.batch_update({'requests': requests})
     print(f"🗄️ Перенесено в Archive: {len(to_archive)} строк.")
 
@@ -283,7 +282,10 @@ def update_google_sheets(sheet, data):
 def check_archive_and_restore(main_sheet, archive_sheet):
     rows = archive_sheet.get_all_values()[1:]  
     today = datetime.today()
-    two_weeks_ago = today - timedelta(days=14)
+    two_weeks_ago = today - timedelta(days=1)
+
+    to_update_last_checked = []  # [(archive_row_index, new_date), ...]
+    to_restore = []             # [(archive_idx, cols_A_to_I, new_developer, new_release), ...]
 
     for idx, row in enumerate(rows, start=2):
         if len(row) < 10:
@@ -303,39 +305,68 @@ def check_archive_and_restore(main_sheet, archive_sheet):
         if not last_checked or last_checked < two_weeks_ago:
             result = fetch_google_play_data(package_name, row[0], existing_status, existing_release, existing_not_found)
             if result is None:
-                archive_sheet.update(f"J{idx}", [[today.strftime("%Y-%m-%d")]])
+                to_update_last_checked.append((idx, today.strftime("%Y-%m-%d")))
                 continue
 
-            # result = [package_name, status, final_date, not_found_date, developer_name]
             _, new_status, new_release, new_not_found, new_developer = result
 
             if new_status == "ban":
-                archive_sheet.update(f"J{idx}", [[today.strftime("%Y-%m-%d")]])
-                continue
+                to_update_last_checked.append((idx, today.strftime("%Y-%m-%d")))
+            else:
+                # помечаем строку для восстановления
+                cols_A_to_I = row[:9] + [""] * (9 - len(row[:9]))
+                to_restore.append((idx, cols_A_to_I, new_developer, new_release))
 
-            archive_sheet.delete_rows(idx)
+    if to_update_last_checked:
+        batch_data = {"valueInputOption": "RAW", "data": []}
+        for (archive_idx, date_str) in to_update_last_checked:
+            batch_data["data"].append({
+                "range": f"Archive!J{archive_idx}",
+                "values": [[date_str]]
+            })
+        archive_sheet.spreadsheet.batch_update(batch_data)
 
+    if to_restore:
+        to_restore.sort(key=lambda x: x[0], reverse=True)
+        sheet_id = archive_sheet._properties['sheetId']
+        requests = []
+        for (archive_idx, _, _, _) in to_restore:
+            start_index = archive_idx - 1
+            end_index   = archive_idx
+            requests.append({
+                'deleteDimension': {
+                    'range': {
+                        'sheetId': sheet_id,
+                        'dimension': 'ROWS',
+                        'startIndex': start_index,
+                        'endIndex': end_index
+                    }
+                }
+            })
+        archive_sheet.spreadsheet.batch_update({'requests': requests})
+
+        for (_, cols_A_to_I, new_developer, new_release) in reversed(to_restore):
+            app_number   = cols_A_to_I[0]
+            package_name = cols_A_to_I[7]
             main_row = [
-                row[0],           
-                "",               
-                "",               
-                "ready",          
-                new_developer,    
-                new_release,      
-                "",               
-                package_name,     
-                row[8]            
+                app_number,          # A
+                "",                  # B
+                "",                  # C
+                "ready",             # D
+                new_developer,       # E
+                new_release,         # F
+                "",                  # G
+                package_name,        # H
+                cols_A_to_I[8]       # I
             ]
             main_sheet.append_row(main_row)
 
-            base_key    = f"{today.strftime('%Y-%m-%d')}-{row[0]}-{package_name}"
+            base_key    = f"{today.strftime('%Y-%m-%d')}-{app_number}-{package_name}"
             change_type = "Приложение вернулось в стор"
             log_key     = base_key + "-" + change_type
             if log_key not in known_log_entries:
-                log_change(change_type, row[0], package_name)
+                log_change(change_type, app_number, package_name)
                 known_log_entries.add(log_key)
-
-            return
 
 # ────────────────────────────────────────────────────────────────────────────────
 
@@ -343,7 +374,6 @@ def job():
     print("🔄 Начинаем обновление данных...")
 
     archive_old_bans(sheet)
-
     check_archive_and_restore(sheet, archive_sh)
 
     data = fetch_all_data()
