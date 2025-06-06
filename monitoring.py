@@ -284,7 +284,7 @@ def update_google_sheets(sheet, data):
 def check_archive_and_restore(main_sheet, archive_sheet):
     rows = archive_sheet.get_all_values()[1:]  
     today = datetime.today()
-    two_weeks_ago = today - timedelta(days=1)  # проверять каждые сутки
+    two_weeks_ago = today - timedelta(days=7) 
 
     # 1) Собираем, какие строки нужно обновить по «Last Checked», а какие восстановить
     to_update_last_checked = []  # [(archive_row_index, new_date), ...]
