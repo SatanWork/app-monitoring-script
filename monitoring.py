@@ -137,7 +137,7 @@ def archive_old_bans(main_sheet):
     rows       = main_sheet.get_all_values()[1:]  # без заголовка
     to_archive = []
     today      = datetime.today()
-    cutoff     = today - timedelta(days=45)
+    cutoff     = today - timedelta(days=45) 
 
     for idx, row in enumerate(rows, start=2):
         if len(row) < 7:
@@ -157,11 +157,13 @@ def archive_old_bans(main_sheet):
     if not to_archive:
         return
 
+    # 1) Добавляем все сразу в Archive
     archive_rows = []
     for _, cols_A_to_I in to_archive:
         archive_rows.append(cols_A_to_I + [today.strftime("%Y-%m-%d")])  # + «Last Checked»
     archive_sh.append_rows(archive_rows)
 
+    # 2) Удаляем строки из основного листа, начиная с самых больших индексов
     to_archive.sort(key=lambda x: x[0], reverse=True)
     sheet_id = main_sheet._properties['sheetId']
     requests = []
@@ -282,8 +284,9 @@ def update_google_sheets(sheet, data):
 def check_archive_and_restore(main_sheet, archive_sheet):
     rows = archive_sheet.get_all_values()[1:]  
     today = datetime.today()
-    two_weeks_ago = today - timedelta(days=1)
+    two_weeks_ago = today - timedelta(days=1)  # проверять каждые сутки
 
+    # 1) Собираем, какие строки нужно обновить по «Last Checked», а какие восстановить
     to_update_last_checked = []  # [(archive_row_index, new_date), ...]
     to_restore = []             # [(archive_idx, cols_A_to_I, new_developer, new_release), ...]
 
@@ -313,10 +316,10 @@ def check_archive_and_restore(main_sheet, archive_sheet):
             if new_status == "ban":
                 to_update_last_checked.append((idx, today.strftime("%Y-%m-%d")))
             else:
-                # помечаем строку для восстановления
                 cols_A_to_I = row[:9] + [""] * (9 - len(row[:9]))
                 to_restore.append((idx, cols_A_to_I, new_developer, new_release))
 
+    # 2) Пакетное обновление «Last Checked» в архиве
     if to_update_last_checked:
         batch_data = {"valueInputOption": "RAW", "data": []}
         for (archive_idx, date_str) in to_update_last_checked:
@@ -324,9 +327,11 @@ def check_archive_and_restore(main_sheet, archive_sheet):
                 "range": f"Archive!J{archive_idx}",
                 "values": [[date_str]]
             })
-        archive_sheet.spreadsheet.batch_update(batch_data)
+        archive_sheet.spreadsheet.values_batch_update(batch_data)
 
+    # 3) Восстановление ready-приложений из архива
     if to_restore:
+        # 3a) Удаляем строки из Archive (в порядке убывания индексов)
         to_restore.sort(key=lambda x: x[0], reverse=True)
         sheet_id = archive_sheet._properties['sheetId']
         requests = []
@@ -345,6 +350,7 @@ def check_archive_and_restore(main_sheet, archive_sheet):
             })
         archive_sheet.spreadsheet.batch_update({'requests': requests})
 
+        # 3b) Добавляем восстановленные строки в основной лист
         for (_, cols_A_to_I, new_developer, new_release) in reversed(to_restore):
             app_number   = cols_A_to_I[0]
             package_name = cols_A_to_I[7]
